@@ -77,13 +77,34 @@ def process_gpx(input_file, output_file, sensitive_config):
     # Store transformation rules: (original_lat, original_lon) -> {'new_pos': (lat, lon), 'radius': r}
     point_transformations = {}
 
+    # 0. Pre-Pass: Handle Explicit "Ghost" Coordinates from JSON (those not matching a waypoint)
+    for name, config in sensitive_config.items():
+        if 'lat' in config and 'lon' in config:
+            lat = config['lat']
+            lon = config['lon']
+
+            # Calculate the random "fake" location immediately
+            rng = random.Random(config['seed'])
+            new_lat, new_lon = calculate_destination_point(
+                lat, lon,
+                rng.uniform(0, config['radius']),
+                rng.uniform(0, 360)
+            )
+
+            # Register this as a sensitive zone
+            point_transformations[(lat, lon)] = {
+                'new_pos': (new_lat, new_lon),
+                'radius': config['radius']
+            }
+            print(f"  [Ghost Point] '{name}': Zone Active (Radius: {config['radius']}km)")
+
     # 1. Process Waypoints (<wpt>)
     for wpt in root.findall('gpx:wpt', NS):
         name_tag = wpt.find('gpx:name', NS)
         if name_tag is not None and name_tag.text in sensitive_config:
             name = name_tag.text
             config = sensitive_config[name]
-            
+
             lat = float(wpt.get('lat'))
             lon = float(wpt.get('lon'))
             original_key = (lat, lon)
