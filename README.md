@@ -41,14 +41,16 @@ Secondary sources:
     * Download, process, and display the easy data - FindPenguins GPX, eBird checklists
     * Obfuscate sensitive locations
     * Use a mapping library that will scale
-* Local database
+* Local database & ETL
     * Probably postgres with postgis and pgvector - nice and flexible
     * Play around with what data to use, preliminary data models, intermediate processing steps, and of course vector embeddings
     * Play around with queries and RAG (might just use RAG for pre-computed summaries for simplicity)
 * Visualization
     * Set up a super basic server for the database (go would be easy for me)
-    * Lots of visual design decisions to make here! Ideally it can all be built on top of the initial map though
+    * Lots of visual design decisions to make here! Ideally it can all be built on top of the initial map, and I'll keep v1 as simple as I reasonably can
     * Probably will need to heavily alter data models as I make UI decisions
 * Public deployment
     * Decide on free/low-cost infrastructure for the database and server, keeping privacy and authorization in mind
     * Deploy and share!
+
+The timeline for this project is immensely flexible, but I'm aiming to timebox v1: <1 week for the initial travel map, ~2 weeks for the local database and data exploration, 1-2 weeks for visualization, and <1 week for deployment. It isn't a production system so I won't have production quality, or production timelines.
