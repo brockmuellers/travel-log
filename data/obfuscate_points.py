@@ -6,7 +6,7 @@ import argparse
 import os
 
 """
-Obfuscates sensitive waypoints in a GPX file.
+Obfuscates sensitive waypoints in a GPX file. It isn't perfect but it's good enough.
 
 Changes the coordinates of each waypoint to a (seeded) random location that is `radius`
 kilometers away from the original, and then removes nearby points along the route.
