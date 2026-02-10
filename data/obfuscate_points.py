@@ -31,6 +31,8 @@ ET.register_namespace('', NS['gpx'])
 DEFAULT_WAYPOINTS = "private_data/sensitive_waypoints.json"
 # A janky relative path on my local machine
 DEFAULT_DEPLOY_PATH = "../../brockmuellers.github.io/assets/gpx"
+# Round new lat/lon values, to make obfuscation less obvious
+ROUND_TO = 6
 
 def normalize_longitude(lon):
     """
@@ -75,7 +77,8 @@ def calculate_destination_point(lat, lon, distance_km, bearing_degrees):
     final_lat = math.degrees(new_lat_rad) # Probably doesn't handle wrapping at poles correctly
     final_lon = normalize_longitude(math.degrees(new_lon_rad))
 
-    return final_lat, final_lon
+    # Round the final values so it's less obvious that obfuscation was done
+    return round(final_lat, ROUND_TO), round(final_lon, ROUND_TO)
 
 def process_gpx(input_file, output_file, sensitive_config):
     print(f"Reading GPX: {input_file}")
@@ -108,7 +111,7 @@ def process_gpx(input_file, output_file, sensitive_config):
                 'new_pos': (new_lat, new_lon),
                 'radius': dist
             }
-            print(f"  [Ghost Point] '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°
+            print(f"  [Ghost Point] '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°")
 
     # 1. Process Waypoints (<wpt>)
     for wpt in root.findall('gpx:wpt', NS):
