@@ -52,7 +52,8 @@ def convert_inat_csv_to_geojson(input_csv, output_geojson):
                     "title": title,
                     "image_url": row.get('image_url', ''),
                     "obs_url": row.get('url', ''),
-                    "date": row.get('observed_on', '')
+                    "date": row.get('observed_on', ''),
+                    "global_count": row.get('', ''),
                 }
             }
             features.append(feature)

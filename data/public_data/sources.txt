@@ -1,0 +1,5 @@
+gbif_inaturalist_research_grade_observations_species_list_2026-02-10.csv
+https://www.gbif.org/occurrence/download?dataset_key=50c9509d-22c7-4a22-a47d-8c48425ef4a7
+
+filtered_gbif_inaturalist_report.csv
+Filtered the above with filter_gbif.py
