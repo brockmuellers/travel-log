@@ -1,0 +1,8 @@
+data/personal_data/ebird/*.csv
+data/personal_data/inaturalist/*.csv
+data/personal_data/inaturalist/*.geojson
+data/private_data/findpenguins/*.gpx
+data/public_data/datasets/
+data/public_data/*.json
+**/*.zip
+
