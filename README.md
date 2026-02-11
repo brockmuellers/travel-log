@@ -22,7 +22,7 @@ Primary data sources:
 Secondary sources:
 * My husband's travel blog, with one post per country - might be useful to provide context for an LLM
 * Google location history - this is not super accurate (there are major gaps and drift)
-* Data from public sources: global eBird and iNaturalist observations, other biodiversity data sources, weather + sunrise/sunset + AQI, OpenStreetMap "Points of Interest", major events (GDELT Project?), holidays, government travel advisories, opinionated travel content from Wikivoyage, Alltrails
+* Data from public sources: global eBird and iNaturalist observations, other biodiversity data sources, weather + sunrise/sunset + AQI, OpenStreetMap "Points of Interest", major events (GDELT Project?), holidays, government travel advisories, opinionated travel content from Wikivoyage, Alltrails, WWF ecoregions
 * Data from non-public sources (can't share it, but it would be interesting to view in a local implementation): Strava/Gaia heatmaps, Lonely Planet & Rough Guide guidebooks
 
 ## Known Unknowns & Risks
