@@ -3,16 +3,13 @@ import csv
 import json
 import os
 import shutil
+import sys
+from dotenv import load_dotenv
 
 """
 Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
 Loads observation counts from global inaturalist taxon data to include in the geojson.
 """
-
-OUTPUT_FILE = 'personal_data/inaturalist/inaturalist.geojson'
-TAXON_JSON_FILE = 'public_data/inaturalist_taxa.json'
-# A janky relative path on my local machine
-DEFAULT_DEPLOY_PATH = "../../brockmuellers.github.io/assets/observations"
 
 def convert_inat_csv_to_geojson(input_csv, output_geojson, taxa_json):
     """
@@ -105,6 +102,12 @@ def convert_inat_csv_to_geojson(input_csv, output_geojson, taxa_json):
     return True
 
 if __name__ == "__main__":
+    load_dotenv()
+
+    OUTPUT_FILE = os.path.join(os.getenv("FINAL_DATA_DIR"), "inaturalist.geojson")
+    TAXON_JSON_FILE = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
+    DEFAULT_DEPLOY_PATH = os.path.join(os.getenv("DEPLOY_TARGET"), "observations")
+
     parser = argparse.ArgumentParser(description="Convert raw inaturalist observations to a geojson file for map view.")
     parser.add_argument("input_csv", help="Path to the input CSV file")
     parser.add_argument("--deploy-path",
@@ -112,11 +115,7 @@ if __name__ == "__main__":
                         default=DEFAULT_DEPLOY_PATH)
     args = parser.parse_args()
 
-    # Resolve relative deploy path to absolute path
-    # Exit early if deploy path does not exist
-    # Copied directly from obfuscate_points.py
     if args.deploy_path:
-        args.deploy_path = os.path.abspath(args.deploy_path)
         if not os.path.exists(args.deploy_path):
             print(f"\n[ERROR] Deploy path not found: {args.deploy_path}")
             sys.exit(1)
@@ -128,7 +127,6 @@ if __name__ == "__main__":
     success = convert_inat_csv_to_geojson(args.input_csv, OUTPUT_FILE, TAXON_JSON_FILE)
 
     # Deploy generated file, if deploy path provided
-    # Use original file name
     # Copied directly from obfuscate_points.py
     if success and args.deploy_path:
         deploy_file = f"{args.deploy_path}"

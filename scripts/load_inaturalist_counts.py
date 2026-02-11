@@ -1,12 +1,15 @@
 import pandas as pd
 import requests
 import json
-import time
 import math
+import os
+import time
+from dotenv import load_dotenv
 
 # --- CONFIGURATION ---
-input_csv = 'personal_data/inaturalist/observations-679011.csv'
-output_json = 'public_data/inaturalist_taxa.json'
+load_dotenv()
+input_csv =  os.path.join(os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observations-679011.csv")
+output_json = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
 # ---------------------
 
 def get_inaturalist_counts():
