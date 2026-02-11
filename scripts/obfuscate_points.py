@@ -6,6 +6,8 @@ import argparse
 import os
 import shutil
 import sys
+from dotenv import load_dotenv
+from pathlib import Path
 
 """
 Obfuscates sensitive waypoints in a GPX file. It isn't perfect but it's good enough.
@@ -28,9 +30,10 @@ NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
 ET.register_namespace('', NS['gpx'])
 
 # --- Configuration for Defaults ---
-DEFAULT_WAYPOINTS = "private_data/sensitive_waypoints.json"
-# A janky relative path on my local machine
-DEFAULT_DEPLOY_PATH = "../../brockmuellers.github.io/assets/gpx"
+load_dotenv()
+DEFAULT_WAYPOINTS = os.path.join(os.getenv("PRIVATE_DATA_DIR"),"sensitive_waypoints.json")
+DEFAULT_DEPLOY_PATH = os.path.join(os.getenv("DEPLOY_TARGET"), "gpx")
+DEFAULT_OUTPUT_PATH = os.getenv("FINAL_DATA_DIR")
 # Round new lat/lon values, to make obfuscation less obvious
 ROUND_TO = 6
 
@@ -201,9 +204,10 @@ def process_gpx(input_file, output_file, sensitive_config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Obfuscate sensitive waypoints in a GPX file.")
 
-    parser.add_argument("input_gpx", help="Path to the input GPX file")
+    parser.add_argument("input_gpx", help="Path to the input GPX file. If a directory, processes all files in the directory")
 
-    parser.add_argument("-o", "--output", help="Path to the output GPX file", default=None)
+    # just hardcoding the output for now
+    # parser.add_argument("-o", "--output", help="Path to the output GPX file", default=None)
     parser.add_argument("-w", "--waypoints", help=f"Path to JSON waypoints config (default: {DEFAULT_WAYPOINTS})", default=DEFAULT_WAYPOINTS)
     parser.add_argument("--deploy-path",
                         help=f"Folder to copy the output file to for deployment. Default: {DEFAULT_DEPLOY_PATH}. Pass an empty string \"\" to disable.",
@@ -211,34 +215,29 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Determine output filename if not provided
-    if args.output is None:
-        base, ext = os.path.splitext(args.input_gpx)
-        args.output = f"{base}_obfuscated{ext}"
-
-    # Resolve relative deploy path to absolute path
-    # Exit early if deploy path does not exist
-    if args.deploy_path:
-        args.deploy_path = os.path.abspath(args.deploy_path)
-        if not os.path.exists(args.deploy_path):
-            print(f"\n[ERROR] Deploy path not found: {args.deploy_path}")
-            sys.exit(1)
-
     # Load sensitive point config
     with open(args.waypoints, 'r') as f:
         data = json.load(f)
     config = {item['name']: item for item in data}
 
-    # Obfuscate
-    success = process_gpx(args.input_gpx, args.output, config)
+    inputs = []
+    if os.path.isdir(args.input_gpx):
+        inputs = list(Path(args.input_gpx).glob("*.gpx"))
+        print(f"{inputs}")
+    else:
+        inputs = [args.input_gpx]
 
-    # Deploy obfuscated file, if deploy path provided
-    # Use original file name
-    if success and args.deploy_path:
-        deploy_filename = os.path.basename(args.input_gpx)
-        deploy_file = f"{args.deploy_path}/{deploy_filename}"
-        try:
-            shutil.copy(args.output, deploy_file)
-            print(f"  [SUCCESS] Copied {args.output} -> {deploy_file}")
-        except Exception as e:
-            print(f"  [ERROR] Copy failed: {e}")
+    for input_gpx in inputs:
+        print(f"Processing file {input_gpx}")
+        # Obfuscate
+        output = os.path.join(DEFAULT_OUTPUT_PATH, os.path.basename(input_gpx))
+        success = process_gpx(input_gpx, output, config)
+
+        # Deploy obfuscated file, if deploy path provided
+        # Use original file name
+        if success and args.deploy_path:
+            try:
+                shutil.copy(output, args.deploy_path)
+                print(f"  [SUCCESS] Copied {output} -> {args.deploy_path}")
+            except Exception as e:
+                print(f"  [ERROR] Copy failed: {e}")
