@@ -3,3 +3,6 @@ https://www.gbif.org/occurrence/download?dataset_key=50c9509d-22c7-4a22-a47d-8c4
 
 filtered_gbif_inaturalist_report.csv
 Filtered the above with filter_gbif.py
+
+public_data/inaturalist_taxa.json
+Loaded with load_inaturalist_counts.py
