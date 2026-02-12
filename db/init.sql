@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS waypoints (
     start_time TIMESTAMPTZ, -- Use TIMESTAMPTZ for global travel!
     end_time TIMESTAMPTZ,
     location GEOGRAPHY(POINT, 4326),
-    embedding vector(1536)
+    embedding vector(384)
 );
 
 -- Bite-sized gpx tracks
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS track_points (
     track_id INTEGER REFERENCES tracks(id),
     recorded_at TIMESTAMPTZ NOT NULL,
     location GEOGRAPHY(POINT, 4326), -- consider using GEOMETRY for performance
-    elevation_meters NUMERIC,
+    elevation_meters NUMERIC
 );
 
 -- TODO evaluate the necessity of these
