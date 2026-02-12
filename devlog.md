@@ -16,3 +16,9 @@ Doing my best not to over-engineer the schema/ETL from the beginning. Some stick
 - All of the AI-suggested indices may be overkill, but I'll evaluate them later.
 - There's timestamp "clumping" in the FindPenguins tracks - all points between two adjacent waypoints have the same timestamp. I wonder if I should add millisecond differences in the file?
 - Privacy - right now I have a script that alters the GPX and sensitive points stored in a file, but my DB could have "private zones" stored and do screening on the fly. Less robust perhaps?
+
+2026-02-12
+
+Time to pull in LLMs! I'm starting with waypoint descriptions, generated from my husband's travel blog. I've had much better luck with manually using Gemini Pro chat for this sort of thing, instead of anything free, but this will only be scalable if I ultimately choose something with an API. Just doing proof of concept for now, so manual is fine.
+
+Making the semi-arbitrary choice to use the local `BAAI/bge-small-en-v1.5` for my waypoint description embeddings. I'm just trying to get something working. Choosing a local model because a) it's free, and b) privacy. (Not that the privacy makes much of a different here, since I'm using Gemini for coding help and pasting personal travel info in there all the time. But more private > less private.) We'll see if it's adequate.
