@@ -5,15 +5,16 @@ from dateutil import parser  # distinct from standard datetime, helps parsing IS
 from sentence_transformers import SentenceTransformer
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+
+"""
+Populate embeddings on waypoints, along with descriptions, from a json file.
+"""
 
 # --- Configuration ---
 load_dotenv()
 DB_CONFIG = os.getenv("DATABASE_CONFIG")
 INPUT_DIR = os.path.join(os.getenv("INTERIM_DATA_DIR"), "robinblog")
-
-# TODO change me
-JSON_FILE = "southeast-asia_gemini_02-cambodia.json"
-JSON_FILE_PATH = os.path.join(INPUT_DIR, JSON_FILE)
 
 # Load the free model (downloads automatically on first run)
 # This model outputs 384-dimensional vectors
@@ -26,7 +27,7 @@ def get_embedding(text):
     text = text.replace("\n", " ")
     return model.encode(text).tolist()
 
-def populate_embeddings():
+def populate_embeddings(json_file_path):
     try:
         conn = psycopg2.connect(DB_CONFIG)
         cur = conn.cursor()
@@ -35,22 +36,22 @@ def populate_embeddings():
         return
 
     try:
-        with open(JSON_FILE_PATH, 'r') as f:
+        with open(json_file_path, 'r') as f:
             waypoints_data = json.load(f)
     except FileNotFoundError:
-        print(f"CRITICAL: JSON file not found at {JSON_FILE_PATH}")
+        print(f"CRITICAL: JSON file not found at {json_file_path}")
         return
 
-    print(f"Processing {len(waypoints_data)} waypoints...")
+    print(f"Processing {len(waypoints_data)} waypoints from {json_file_path}...")
 
     try:
         for entry in waypoints_data:
             name = entry.get('name')
             raw_start_time = entry.get('time')
-            summary = entry.get('summary')
+            description = entry.get('description')
 
-            if not summary:
-                print(f"Skipping '{name}': No summary text found.")
+            if not description:
+                print(f"Skipping '{name}': No description text found.")
                 continue
 
             try:
@@ -80,7 +81,7 @@ def populate_embeddings():
 
             # --- Generate Embedding Locally ---
             # No API call, no cost.
-            embedding_vector = get_embedding(summary)
+            embedding_vector = get_embedding(description)
 
             update_query = """
                 UPDATE waypoints 
@@ -89,8 +90,15 @@ def populate_embeddings():
             """
             cur.execute(update_query, (embedding_vector, waypoint_id))
 
+            update_query = """
+                UPDATE waypoints 
+                SET description = %s 
+                WHERE id = %s;
+            """
+            cur.execute(update_query, (description, waypoint_id))
+
         conn.commit()
-        print("\nSUCCESS: All embeddings populated.")
+        print("\nSUCCESS: All embeddings populated and committed.")
 
     except Exception as e:
         conn.rollback()
@@ -102,4 +110,8 @@ def populate_embeddings():
         conn.close()
 
 if __name__ == "__main__":
-    populate_embeddings()
+
+    inputs = list(Path(INPUT_DIR).glob("*.json"))
+
+    for infile in inputs:
+        populate_embeddings(infile)

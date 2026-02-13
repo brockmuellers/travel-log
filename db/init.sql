@@ -22,11 +22,11 @@ CREATE TABLE IF NOT EXISTS waypoints (
     id SERIAL PRIMARY KEY,
     trip_id INTEGER REFERENCES trips(id),
     name TEXT,
-    description TEXT,
+    description TEXT, -- populated from the blog
     start_time TIMESTAMPTZ, -- Use TIMESTAMPTZ for global travel!
     end_time TIMESTAMPTZ,
     location GEOGRAPHY(POINT, 4326),
-    embedding vector(384)
+    embedding vector(384) -- populated from the description
 );
 
 -- Bite-sized gpx tracks
