@@ -18,7 +18,8 @@ def extract_waypoints_from_gpx(input_file, output_file):
     # GPX files often use namespaces
     namespaces = {'gpx': 'http://www.topografix.com/GPX/1/1'}
 
-    waypoints_data = []
+    # Start with a placeholder _general_ waypoint
+    waypoints_data = [{"name": "_general_", "time": "", "description": ""}]
 
     # Find all waypoint (wpt) elements
     for wpt in root.findall('gpx:wpt', namespaces):
@@ -31,7 +32,8 @@ def extract_waypoints_from_gpx(input_file, output_file):
 
         waypoints_data.append({
             "name": name,
-            "time": time
+            "time": time,
+            "description": ""
         })
 
     # Save to JSON file
