@@ -1,6 +1,6 @@
 PROMPT
 
-I am uploading a blog post, which should be written in chronological order, about a segment of our trip. I'm also uploading a json file of "waypoints" (major stops in the country) and their approximate arrival dates, with waypoints ordered by date.
+I am uploading a blog post, which is written in chronological order, about a segment of our trip. I'm also uploading a json file of "waypoints" (major stops in the country) and their approximate arrival dates, with waypoints ordered by date. You will find a placeholder "_general_" waypoint in the file as well.
 
 Please read the blog post and generate a first-person description for each waypoint based only on the provided text and photos. Include as much information as you can. Do not include citations.
 
@@ -8,6 +8,7 @@ Special cases:
 - It's possible that locations are visited multiple times - in that case, there will be multiple waypoints with the same or similar names, but different dates.
 - If the waypoint name does not have a specific mention in the blog, attempt to identify blog commentary on the waypoint by chronological order and context. If you determine that the waypoint isn't mentioned in the blog, write 'No specific mention.'
 - When there is notable information about the travel between two waypoints, it should be included in the description for the destination waypoint, if possible.
+- Any information that is not linked to a specific waypoint should go in the description for the "_general_" waypoint.
 
 CRITICAL: in a code block, output a json file. It should be exactly equivalent to the input json file, except for adding a `"description"` property that records your description for each waypoint. After that, below the code block, give me a summary of any confusions/ambiguities you encountered, and notes about your process.
 
@@ -25,3 +26,6 @@ Processing output:
 - Might need to find and replace citation markers:
 	- exact match:	[cite_start]
 	- regex:		\s*\[cite:\s*([^\]]+)\]
+
+For calling an API, change the final instructions to:
+CRITICAL: your output will be a json file. It should be exactly equivalent to the input json file, except for adding a `"description"` property that records your description for each waypoint. Only output the json content.
