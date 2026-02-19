@@ -8,9 +8,12 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load() // load .env if present; ignore error
+
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
 		connStr = os.Getenv("DATABASE_CONFIG")
