@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load() // load .env if present; ignore error
+	_ = godotenv.Load()
 
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {

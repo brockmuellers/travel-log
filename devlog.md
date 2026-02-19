@@ -67,3 +67,10 @@ TODO: look into how to manage wake-up times. Cloudflare layer to block bots? Cac
 I've been convinced to move my DNS hosting, for my entire domain, to Cloudflare. As I understand it, they will give me the aforementioned bot blocking, maybe some bonus analytics (my google analytics is broken and I don't feel like fixing it), and I can move away from the very painfully slow namecheap redirects. The bot blocking isn't a big deal for now, given that I only have a static github pages site, but it could be a bigger deal once I have an API. (And do I need the API to be on my personal domain? Probably not, but it seems nicer from a CORS perspective. Not to mention that it'll be slightly easier to swap to a different backend hosting provider if render is no good.) I'm wary of the extra layer of complexity, but Cloudflare is as trustworthy as it gets. Let's give it a shot.
 
 Going back to my web app stack...I somehow missed the existence of Oracle Cloud's Always Free tier. I have an inkling that the setup will be more complex (less handholding) but I'm literally a pro so that's fine. I get a (relatively) big machine and plenty of flexibility. Plus, there will be none of those slow cold starts. Major, major downside - it'll reclaim your resources if they don't maintain a fairly high weekly average usage. So I'm back to Neon/Render.
+
+I'll list a few improvements that I'll need to make later:
+* I think I'll want something to ping my health endpoint regularly (14 minutes?) to keep render from going to sleep; maybe just during the day
+* Neon won't automatically update my schema or data
+
+Command for updating my remote DB to match my local one:
+`docker exec -t travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`
