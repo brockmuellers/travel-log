@@ -55,13 +55,11 @@ Secondary sources:
 
 The timeline for this project is immensely flexible, but I'm aiming to timebox v1: <1 week for the initial travel map, ~2 weeks for the local database and data exploration, 1-2 weeks for visualization, and <1 week for deployment. It isn't a production system so I won't have production quality, or production timelines.
 
-## Running the Go server
+## App notes
 
-A minimal Go server exposes a health check and a waypoints count query against Postgres.
+### Running the Go Server
 
-**Endpoints:**
-- `GET /health` — returns `{"status":"ok"}`
-- `GET /waypoints/count` — returns `{"count":<n>}` from `SELECT count(*) FROM waypoints`
+A minimal Go server exposes queries against Postgres.
 
 **Setup:** Start Postgres (e.g. `docker compose up -d`), then from the repo root:
 
@@ -79,3 +77,11 @@ go build -o server ./cmd/server
 ```
 
 Server listens on `:8081` unless you set `SERVER_ADDR`.
+
+Note to self: don't forget to `go mod tidy` before pushing if updating `go.mod`!
+
+### Database
+
+Command for updating my remote DB to match my local one:
+
+`docker exec -t travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`

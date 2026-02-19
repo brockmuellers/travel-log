@@ -71,6 +71,8 @@ Going back to my web app stack...I somehow missed the existence of Oracle Cloud'
 I'll list a few improvements that I'll need to make later:
 * I think I'll want something to ping my health endpoint regularly (14 minutes?) to keep render from going to sleep; maybe just during the day
 * Neon won't automatically update my schema or data
+* Have a cloudflare worker to pause traffic - got this started in the UI but I'd like it to be version controlled; probably want to use github actions
 
-Command for updating my remote DB to match my local one:
-`docker exec -t travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`
+It's been a day of configuration - DNS, loading environment variables, linking services, etc - but there's an API and a database! For example: https://api.travel-log.brockmuellers.com/waypoints/count
+
+Next steps: getting the frontend to hit this, just as proof of concept. It would be fun to expose something like the vector search script. Then I'm back to feature planning and nitty gritty data exploration.
