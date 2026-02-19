@@ -54,3 +54,28 @@ Secondary sources:
     * Deploy and share!
 
 The timeline for this project is immensely flexible, but I'm aiming to timebox v1: <1 week for the initial travel map, ~2 weeks for the local database and data exploration, 1-2 weeks for visualization, and <1 week for deployment. It isn't a production system so I won't have production quality, or production timelines.
+
+## Running the Go server
+
+A minimal Go server exposes a health check and a waypoints count query against Postgres.
+
+**Endpoints:**
+- `GET /health` — returns `{"status":"ok"}`
+- `GET /waypoints/count` — returns `{"count":<n>}` from `SELECT count(*) FROM waypoints`
+
+**Setup:** Start Postgres (e.g. `docker compose up -d`), then from the repo root:
+
+```bash
+# Optional: set DB connection (defaults match docker-compose)
+# export DATABASE_URL="postgres://admin:password@localhost:5432/postgres?sslmode=disable"
+# or use DATABASE_CONFIG / DATABASE_HOST, DATABASE_USER, etc.
+
+# Run directly
+go run ./cmd/server
+
+# Or build an executable, then run it
+go build -o server ./cmd/server
+./server
+```
+
+Server listens on `:8081` unless you set `SERVER_ADDR`.
