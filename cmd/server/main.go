@@ -63,7 +63,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
-	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, embeddingServiceURL))
+	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, env, embeddingServiceURL))
 
 	log.Printf("listening on %s", serverAddr)
 	if err := http.ListenAndServe(serverAddr, mux); err != nil {
@@ -89,7 +89,7 @@ func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// embeddingResponse is the JSON response from the embedding service.
+// embeddingResponse is the JSON response from the local Python embedding service.
 type embeddingResponse struct {
 	Embedding []float64 `json:"embedding"`
 }
@@ -102,7 +102,9 @@ type searchResult struct {
 	Score       float64 `json:"score"` // 0–100, (1 - distance) * 100
 }
 
-func waypointsSearch(pool *pgxpool.Pool, embeddingServiceURL string) http.HandlerFunc {
+const hfEmbeddingModel = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5/pipeline/feature-extraction"
+
+func waypointsSearch(pool *pgxpool.Pool, env, embeddingServiceURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
@@ -110,36 +112,90 @@ func waypointsSearch(pool *pgxpool.Pool, embeddingServiceURL string) http.Handle
 			return
 		}
 
-		// Call Python embedding service
-		body, _ := json.Marshal(map[string]string{"text": q})
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, embeddingServiceURL+"/embed", bytes.NewReader(body))
-		if err != nil {
-			http.Error(w, `{"error":"embedding request failed"}`, http.StatusInternalServerError)
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
-			return
-		}
-		var embResp embeddingResponse
-		if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
-			http.Error(w, `{"error":"invalid embedding response"}`, http.StatusBadGateway)
-			return
-		}
-		if len(embResp.Embedding) != 384 {
-			http.Error(w, `{"error":"unexpected embedding dimension"}`, http.StatusBadGateway)
-			return
-		}
-		vec := make([]float32, len(embResp.Embedding))
-		for i, v := range embResp.Embedding {
-			vec[i] = float32(v)
+		var vec []float32
+		if env == "prod" {
+			// Use Hugging Face Inference API (router endpoint)
+			token := os.Getenv("HUGGING_FACE_TOKEN")
+			if token == "" {
+				http.Error(w, `{"error":"HUGGING_FACE_TOKEN not set for prod"}`, http.StatusInternalServerError)
+				return
+			}
+			body, _ := json.Marshal(map[string]string{"model": "BAAI/bge-small-en-v1.5", "inputs": q})
+			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, hfEmbeddingModel, bytes.NewReader(body))
+			if err != nil {
+				http.Error(w, `{"error":"embedding request failed"}`, http.StatusInternalServerError)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("%w", resp.StatusCode)
+				http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
+				return
+			}
+			// HF pipeline returns a single array of floats (or array of arrays; we accept both)
+			var raw json.RawMessage
+			if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+				http.Error(w, `{"error":"invalid embedding response"}`, http.StatusBadGateway)
+				return
+			}
+			var floats []float64
+			if err := json.Unmarshal(raw, &floats); err == nil && len(floats) == 384 {
+				// Flat array [f1, f2, ...]
+				vec = make([]float32, len(floats))
+				for i, v := range floats {
+					vec[i] = float32(v)
+				}
+			} else {
+				// Nested [[f1, f2, ...]]
+				var nested [][]float64
+				if err := json.Unmarshal(raw, &nested); err != nil || len(nested) == 0 || len(nested[0]) != 384 {
+					http.Error(w, `{"error":"unexpected embedding dimension"}`, http.StatusBadGateway)
+					return
+				}
+				vec = make([]float32, len(nested[0]))
+				for i, v := range nested[0] {
+					vec[i] = float32(v)
+				}
+			}
+		} else {
+			// Dev: use local Python embedding service
+			body, _ := json.Marshal(map[string]string{"text": q})
+			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, embeddingServiceURL+"/embed", bytes.NewReader(body))
+			if err != nil {
+				http.Error(w, `{"error":"embedding request failed"}`, http.StatusInternalServerError)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
+				return
+			}
+			var embResp embeddingResponse
+			if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+				http.Error(w, `{"error":"invalid embedding response"}`, http.StatusBadGateway)
+				return
+			}
+			if len(embResp.Embedding) != 384 {
+				http.Error(w, `{"error":"unexpected embedding dimension"}`, http.StatusBadGateway)
+				return
+			}
+			vec = make([]float32, len(embResp.Embedding))
+			for i, v := range embResp.Embedding {
+				vec[i] = float32(v)
+			}
 		}
 
 		// Cosine distance (<=>); order by distance ASC, limit 3
