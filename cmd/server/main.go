@@ -27,6 +27,7 @@ func main() {
 		log.Fatal("could not find SERVER_ADDR in environment variables")
 	}
 
+	// This might take a few extra seconds while DB starts up but there's no timeout so it's fine.
 	pool, err := pgxpool.New(context.Background(), connStr)
 	if err != nil {
 		log.Fatalf("database: %v", err)
