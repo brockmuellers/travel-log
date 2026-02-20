@@ -175,6 +175,7 @@ func waypointsSearch(pool *pgxpool.Pool, env, embeddingServiceURL string) http.H
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
+				log.Printf("CRITICAL: Hugging Face API request failed: %v", err)
 				http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
 				return
 			}
