@@ -19,13 +19,12 @@ func main() {
 		connStr = os.Getenv("DATABASE_CONFIG")
 	}
 	if connStr == "" {
-		connStr = buildConnStr(
-			getEnv("DATABASE_HOST", "localhost"),
-			getEnv("DATABASE_PORT", "5432"),
-			getEnv("DATABASE_USER", "admin"),
-			getEnv("DATABASE_PASSWORD", "password"),
-			getEnv("DATABASE_NAME", "postgres"),
-		)
+		log.Fatal("could not find DATABASE_URL or DATABASE_CONFIG in environment variables")
+	}
+
+	serverAddr := os.Getenv("SERVER_ADDR")
+	if serverAddr == "" {
+		log.Fatal("could not find SERVER_ADDR in environment variables")
 	}
 
 	pool, err := pgxpool.New(context.Background(), connStr)
@@ -42,22 +41,10 @@ func main() {
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
 
-	addr := getEnv("SERVER_ADDR", ":8081")
-	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	log.Printf("listening on %s", serverAddr)
+	if err := http.ListenAndServe(serverAddr, mux); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func buildConnStr(host, port, user, password, dbname string) string {
-	return "postgres://" + user + ":" + password + "@" + host + ":" + port + "/" + dbname + "?sslmode=disable"
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
