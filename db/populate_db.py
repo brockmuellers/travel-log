@@ -1,14 +1,15 @@
+import contextlib
+import os
+import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import execute_values
-from dotenv import load_dotenv
-import os
-import sys
 from pathlib import Path
+
+import psycopg2
 import srtm
-import contextlib
+from dotenv import load_dotenv
+from psycopg2.extras import execute_values
 
 # Initialize elevation data (files will be cached in a local directory)
 elevation_data = srtm.get_data()

@@ -4,7 +4,9 @@ import json
 import os
 import shutil
 import sys
+
 from dotenv import load_dotenv
+
 
 """
 Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
@@ -135,4 +137,3 @@ if __name__ == "__main__":
             print(f"  [SUCCESS] Copied {OUTPUT_FILE} -> {deploy_file}")
         except Exception as e:
             print(f"  [ERROR] Copy failed: {e}")
-

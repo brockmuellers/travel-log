@@ -1,7 +1,8 @@
-import pandas as pd
 import csv
 import os
 import sys
+
+import pandas as pd
 from dotenv import load_dotenv
 
 # Filter the GBIF report (which is a 100+ mb file) to only include ones relevant to my personal observations.
@@ -165,4 +166,3 @@ def filter_gbif_robust():
 
 if __name__ == "__main__":
     filter_gbif_robust()
-

@@ -1,13 +1,14 @@
-import json
-import random
-import math
-import xml.etree.ElementTree as ET
 import argparse
+import json
+import math
 import os
+import random
 import shutil
 import sys
-from dotenv import load_dotenv
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 """
 Obfuscates sensitive waypoints in a GPX file. It isn't perfect but it's good enough.
