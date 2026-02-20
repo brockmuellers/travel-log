@@ -1,8 +1,10 @@
 import json
-import xml.etree.ElementTree as ET
-from dotenv import load_dotenv
 import os
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from dotenv import load_dotenv
+
 
 """
 Extracts waypoint time and name from a gpx file.

@@ -1,11 +1,12 @@
 import json
 import os
-import psycopg2
-from dateutil import parser  # distinct from standard datetime, helps parsing ISO strings
-from sentence_transformers import SentenceTransformer
-import os
-from dotenv import load_dotenv
 from pathlib import Path
+
+import psycopg2
+from dateutil import \
+    parser  # distinct from standard datetime, helps parsing ISO strings
+from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
 
 """
 Populate embeddings on waypoints, along with descriptions, from a json file.

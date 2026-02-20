@@ -1,12 +1,12 @@
 import argparse
-from google import genai
-from google.genai import types
 import json
-from dotenv import load_dotenv
 import os
 import time
-from pydantic import BaseModel, Field
 
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+from pydantic import BaseModel, Field
 
 # --- Config ---
 load_dotenv()
