@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/pgvector/pgvector-go"
+	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
 
 func main() {
@@ -27,8 +31,21 @@ func main() {
 		log.Fatal("could not find SERVER_ADDR in environment variables")
 	}
 
+	embeddingServiceURL := os.Getenv("EMBEDDING_SERVICE_URL")
+	if embeddingServiceURL == "" {
+		embeddingServiceURL = "http://127.0.0.1:5001"
+	}
+
+	config, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		log.Fatalf("database config: %v", err)
+	}
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgxvec.RegisterTypes(ctx, conn)
+	}
+
 	// This might take a few extra seconds while DB starts up but there's no timeout so it's fine.
-	pool, err := pgxpool.New(context.Background(), connStr)
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
@@ -38,9 +55,15 @@ func main() {
 		log.Fatalf("database ping: %v", err)
 	}
 
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "dev"
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
+	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, embeddingServiceURL))
 
 	log.Printf("listening on %s", serverAddr)
 	if err := http.ListenAndServe(serverAddr, mux); err != nil {
@@ -63,5 +86,92 @@ func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int{"count": count})
+	}
+}
+
+// embeddingResponse is the JSON response from the embedding service.
+type embeddingResponse struct {
+	Embedding []float64 `json:"embedding"`
+}
+
+// searchResult is one waypoint in search results (cosine distance; lower = better).
+type searchResult struct {
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Distance    float64 `json:"distance"`
+	Score       float64 `json:"score"` // 0–100, (1 - distance) * 100
+}
+
+func waypointsSearch(pool *pgxpool.Pool, embeddingServiceURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			http.Error(w, `{"error":"missing query parameter q"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Call Python embedding service
+		body, _ := json.Marshal(map[string]string{"text": q})
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, embeddingServiceURL+"/embed", bytes.NewReader(body))
+		if err != nil {
+			http.Error(w, `{"error":"embedding request failed"}`, http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
+			return
+		}
+		var embResp embeddingResponse
+		if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+			http.Error(w, `{"error":"invalid embedding response"}`, http.StatusBadGateway)
+			return
+		}
+		if len(embResp.Embedding) != 384 {
+			http.Error(w, `{"error":"unexpected embedding dimension"}`, http.StatusBadGateway)
+			return
+		}
+		vec := make([]float32, len(embResp.Embedding))
+		for i, v := range embResp.Embedding {
+			vec[i] = float32(v)
+		}
+
+		// Cosine distance (<=>); order by distance ASC, limit 3
+		rows, err := pool.Query(r.Context(),
+			"SELECT name, description, (embedding <=> $1) AS distance FROM waypoints ORDER BY distance ASC LIMIT 3",
+			pgvector.NewVector(vec))
+		if err != nil {
+			http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []searchResult
+		for rows.Next() {
+			var name, description string
+			var distance float64
+			if err := rows.Scan(&name, &description, &distance); err != nil {
+				http.Error(w, `{"error":"database scan failed"}`, http.StatusInternalServerError)
+				return
+			}
+			score := (1 - distance) * 100
+			if score < 0 {
+				score = 0
+			}
+			results = append(results, searchResult{Name: name, Description: description, Distance: distance, Score: score})
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
 	}
 }
