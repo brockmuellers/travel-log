@@ -80,4 +80,12 @@ Next steps: getting the frontend to hit this, just as proof of concept. It would
 
 2026-02-20
 
-Cursor is a real downgrade from goland, honestly.
+I'm getting my vector search working in my API. It wouldn't have changed anything, but I forgot about the fact that I need to use something like python's `SentenceTransformer` for similarity search in addition to postgres. This can be done in go but it seems a bit complex - python has all the good ML libaries. Implementing the server in python would have been cleaner, but I've worked with python servers and dev goes so much more smoothly with go. Either way, my prod server would be bumping up into the limits of what I can get for free (500 MB RAM).
+
+So, I'm going to get a little python server running for my local dev. For prod, I'm 80% sure I can use the Hugging Face API to get the same results. If not, I'll need to look into a) any hosting options I overlooked that would be adequate for the RAG, or b) other free-ish model APIs that I can use for embedding/search, or c) smaller models that I can fit into the free server tiers.
+
+Now I can do this! Super cool.
+```.bash
+sara@sara:~/repos/travel-log$ curl "http://localhost:8081/waypoints/search?q=ancient%20temples"
+[{"name":"Angkor Thom","description":"We biked to this 12th-century walled city, once the spiritual hub of King Jayavarman VII's empire. At its center is the Bayon Temple, famous for its 54 towers featuring hundreds of smiling faces. A major highlight was observing the resident crab-eating macaques; we spent a couple of hours photographing them, including a juvenile monkey playing with a giant toad like a toy.","distance":0.31577491760253906,"score":68.4225082397461},{"name":"Koh Ker and Beng Melea","description":"These were among our favorite sites because they are overgrown jungle temples where reconstruction has been avoided. At temples like Ta Prohm, Prasat Pram (at Koh Ker), and Beng Melea, we saw how centuries of vegetation and massive tree roots have become completely intertwined with the ancient stone ruins.","distance":0.3372006021261562,"score":66.27993978738438},{"name":"Chiang Rai","description":"After crossing the border from Laos and spending a night in Chiang Khong, we caught a local bus here. Our main goal was to visit Wat Rong Khun, also known as \"The White Temple.\" Unlike traditional temples, this is a modern, surreal creation by artist Chalermchai Kositpipat that blends Buddhist elements with pop culture references. It was crowded and touristy, but we found it extremely impressive, and the attached art gallery was also worth visiting.","distance":0.3594381809234619,"score":64.05618190765381}]
+```

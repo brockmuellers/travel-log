@@ -80,6 +80,28 @@ Server listens on `:8081` unless you set `SERVER_ADDR`.
 
 Note to self: don't forget to `go mod tidy` before pushing if updating `go.mod`!
 
+### Semantic search (waypoints)
+
+The Go server can run semantic search over waypoints using a small Python embedding service (same model as waypoint embeddings: `BAAI/bge-small-en-v1.5`).
+
+**1. Start the embedding service** (from repo root):
+
+```bash
+# First time only, run the line below:
+# pip install -r embedding_service/requirements.txt
+EMBEDDING_SERVICE_PORT=5001 python embedding_service/main.py
+```
+
+Defaults: host `127.0.0.1`, port `5001`. Override with `EMBEDDING_SERVICE_HOST` and `EMBEDDING_SERVICE_PORT`.
+
+**2. Start the Go server** (as above). Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:5001` in `.env` if needed (that’s the default).
+
+**3. Search:**
+
+```bash
+curl "http://localhost:8081/waypoints/search?q=ancient%20temples"
+```
+
 ### Database
 
 Command for updating my remote DB to match my local one:
