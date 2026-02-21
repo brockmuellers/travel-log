@@ -72,8 +72,9 @@ func main() {
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
 	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, env, embeddingServiceURL))
 
-	// Check site token on every request before DB or external APIs.
-	handler := requireSiteToken(siteToken, mux)
+	// Check site token on every request except paths in skipPaths.
+	skipAuthPaths := []string{"/health"}
+	handler := requireSiteToken(siteToken, mux, skipAuthPaths)
 
 	log.Printf("listening on %s", serverAddr)
 	if err := http.ListenAndServe(serverAddr, handler); err != nil {
@@ -87,9 +88,18 @@ func health(w http.ResponseWriter, _ *http.Request) {
 }
 
 // requireSiteToken returns a middleware that rejects requests without a valid SITE_TOKEN.
-// The key may be sent via the X-Site-Token header .
-func requireSiteToken(expectedToken string, next http.Handler) http.Handler {
+// The key may be sent via the X-Site-Token header.
+// Requests whose path is in skipPaths are passed through without checking the token.
+func requireSiteToken(expectedToken string, next http.Handler, skipPaths []string) http.Handler {
+	skip := make(map[string]struct{}, len(skipPaths))
+	for _, p := range skipPaths {
+		skip[p] = struct{}{}
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := skip[r.URL.Path]; ok {
+			next.ServeHTTP(w, r)
+			return
+		}
 		token := r.Header.Get("X-Site-Token")
 		if token != expectedToken {
 			w.Header().Set("Content-Type", "application/json")
