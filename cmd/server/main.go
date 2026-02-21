@@ -60,13 +60,23 @@ func main() {
 		env = "dev"
 	}
 
+	// Site token is used to authenticate requests to the server.
+	// It is not meant to be super secure - just an extra layer of protection.
+	siteToken := os.Getenv("SITE_TOKEN")
+	if siteToken == "" {
+		log.Fatal("SITE_TOKEN must be set in environment (.env)")
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
 	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, env, embeddingServiceURL))
 
+	// Check site token on every request before DB or external APIs.
+	handler := requireSiteToken(siteToken, mux)
+
 	log.Printf("listening on %s", serverAddr)
-	if err := http.ListenAndServe(serverAddr, mux); err != nil {
+	if err := http.ListenAndServe(serverAddr, handler); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -74,6 +84,21 @@ func main() {
 func health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// requireSiteToken returns a middleware that rejects requests without a valid SITE_TOKEN.
+// The key may be sent via the X-Site-Token header .
+func requireSiteToken(expectedToken string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-Site-Token")
+		if token != expectedToken {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid or missing site token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {
