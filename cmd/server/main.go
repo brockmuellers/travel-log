@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -72,9 +73,14 @@ func main() {
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(pool))
 	mux.HandleFunc("GET /waypoints/search", waypointsSearch(pool, env, embeddingServiceURL))
 
-	// Check site token on every request except paths in skipPaths.
-	skipAuthPaths := []string{"/health"}
-	handler := requireSiteToken(siteToken, mux, skipAuthPaths)
+	// Check site token on every request except paths in noAuthPaths.
+	noAuthPaths := []string{"/health"}
+	handler := requireSiteToken(siteToken, mux, noAuthPaths)
+
+	// CORS: set CORS_ORIGIN to the frontend origins, comma-separated
+	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
+		handler = corsMiddleware(handler, origins)
+	}
 
 	log.Printf("listening on %s", serverAddr)
 	if err := http.ListenAndServe(serverAddr, handler); err != nil {
@@ -105,6 +111,30 @@ func requireSiteToken(expectedToken string, next http.Handler, skipPaths []strin
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "invalid or missing site token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// corsMiddleware sets CORS headers when Origin is in the comma-separated allowed list and responds to OPTIONS. Empty entries are ignored.
+func corsMiddleware(next http.Handler, allowedOriginsStr string) http.Handler {
+	originsList := strings.Split(allowedOriginsStr, ",")
+	allowedOrigins := make(map[string]bool, len(originsList))
+	for _, o := range originsList {
+		if o := strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Site-Token")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -170,7 +200,7 @@ func waypointsSearch(pool *pgxpool.Pool, env, embeddingServiceURL string) http.H
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
-				log.Printf("%w", resp.StatusCode)
+				log.Printf("embedding service returned status: %d", resp.StatusCode)
 				http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
 				return
 			}
