@@ -62,6 +62,11 @@ def populate_embeddings(json_file_path):
                 print(f"Skipping '{name}': No description text found.")
                 continue
 
+            if description.strip().strip('.').lower() == "no mention":
+                # Specifically directed LLM to use this string when it couldn't find info
+                # on a particular waypoint. Not the most robust. Consider using blank instead.
+                print(f"Skipping '{name}': Description was 'No mention.'")
+
             if not raw_start_time:
                 # Temp fix
                 # Note that this may happen for the "_general_" waypoint
@@ -124,7 +129,7 @@ def populate_embeddings(json_file_path):
         conn.close()
 
 if __name__ == "__main__":
-
+    # TODO: prioritize the gemini3pro file if it exists
     inputs = list(Path(INPUT_DIR).glob("*.json"))
 
     for infile in inputs:
