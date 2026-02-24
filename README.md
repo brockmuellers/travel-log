@@ -106,4 +106,4 @@ curl "http://localhost:8081/waypoints/search?q=ancient%20temples"
 
 Command for updating my remote DB to match my local one:
 
-`docker exec -t travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`
+`source .env && docker exec travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`
