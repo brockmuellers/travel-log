@@ -22,6 +22,13 @@ INPUT_DIR = os.path.join(os.getenv("INTERIM_DATA_DIR"), "robinblog")
 print("Loading model (this may take a moment first time)...")
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
+def strip_nul(s):
+    """Remove NUL (0x00) characters. PostgreSQL and some libs reject them."""
+    if s is None:
+        return s
+    return s.replace("\x00", "")
+
+
 def get_embedding(text):
     """Generates a 384-dim embedding locally."""
     # sentence-transformers handles newlines fine, but cleaning is good practice
@@ -47,12 +54,18 @@ def populate_embeddings(json_file_path):
 
     try:
         for entry in waypoints_data:
-            name = entry.get('name')
-            raw_start_time = entry.get('time')
-            description = entry.get('description')
+            name = strip_nul(entry.get('name'))
+            raw_start_time = strip_nul(entry.get('time'))
+            description = strip_nul(entry.get('description'))
 
             if not description:
                 print(f"Skipping '{name}': No description text found.")
+                continue
+
+            if not raw_start_time:
+                # Temp fix
+                # Note that this may happen for the "_general_" waypoint
+                print(f"Skipping '{name}': No time (or empty time) found.")
                 continue
 
             try:
@@ -62,7 +75,7 @@ def populate_embeddings(json_file_path):
 
             # --- NOISY CHECK ---
             check_query = """
-                SELECT id FROM waypoints 
+                SELECT id FROM waypoints
                 WHERE name = %s AND start_time = %s;
             """
             cur.execute(check_query, (name, start_time_dt))
@@ -77,7 +90,7 @@ def populate_embeddings(json_file_path):
                     f"{'!'*50}\n"
                 )
                 raise LookupError(error_msg)
-            
+
             waypoint_id = result[0]
 
             # --- Generate Embedding Locally ---
@@ -85,15 +98,15 @@ def populate_embeddings(json_file_path):
             embedding_vector = get_embedding(description)
 
             update_query = """
-                UPDATE waypoints 
-                SET embedding = %s::vector 
+                UPDATE waypoints
+                SET embedding = %s::vector
                 WHERE id = %s;
             """
             cur.execute(update_query, (embedding_vector, waypoint_id))
 
             update_query = """
-                UPDATE waypoints 
-                SET description = %s 
+                UPDATE waypoints
+                SET description = %s
                 WHERE id = %s;
             """
             cur.execute(update_query, (description, waypoint_id))
