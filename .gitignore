@@ -2,3 +2,4 @@ data/
 .env
 .env.prod
 server
+__pycache__/

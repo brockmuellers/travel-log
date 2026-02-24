@@ -95,3 +95,7 @@ Got the hugging face API hooked up and working, though the code is a hot mess. I
 2026-02-24
 
 Docker issue - `docker compose up -d` results in `WARN[0000] No services to build`, so I need to use the `--build` flag every time. Perhaps related to [this github issue](https://github.com/docker/compose/issues/13484)?
+
+It's time to add some basic tests. It's silly not to, given that AI can spit them out. That being said, I'm not 100% sold on all of the architecture and implementation (because AI spit some of it out) so I'm going to keep it super basic for now, for ease of refactoring. CI would be handy but it's not a priority for now.
+
+I am discovering that when it comes to actual logical errors, I am much better at debugging than Cursor is. It seems to change things that appear wrong and hope that the tests will pass. I prefer to figure out what the error is and then just change that thing. No wonder code balloons these days.

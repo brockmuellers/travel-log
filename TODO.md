@@ -8,3 +8,4 @@
 **Low priority:**
 * Docker issue - `docker compose up -d`; see devlog
 * Neon won't automatically update my schema or data
+* CI (github actions with service container?)
