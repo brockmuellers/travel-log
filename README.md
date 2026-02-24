@@ -102,6 +102,25 @@ Defaults: host `127.0.0.1`, port `5001`. Override with `EMBEDDING_SERVICE_HOST` 
 curl "http://localhost:8081/waypoints/search?q=ancient%20temples"
 ```
 
+### Testing
+
+**Go integration tests** (require a running Postgres with the app schema, e.g. `docker compose up -d db`):
+
+```bash
+export DATABASE_URL="postgres://admin:password@localhost:5432/postgres?sslmode=disable"
+go test -tags=integration ./cmd/server/
+```
+
+If `DATABASE_URL` (or `DATABASE_CONFIG`) is not set, the integration tests are skipped.
+
+**Python embedding dimension** (ensures the waypoint embedding pipeline still outputs 384 dimensions, matching the server and DB):
+
+```bash
+python tests/test_embedding_dimension.py
+```
+
+Or with pytest: `pytest tests/ -v`. The first run may be slow while the model downloads.
+
 ### Database
 
 Command for updating my remote DB to match my local one:

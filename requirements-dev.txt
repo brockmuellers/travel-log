@@ -1,0 +1,2 @@
+# For running tests (from repo root: pytest tests/ -v)
+pytest>=7.0.0
