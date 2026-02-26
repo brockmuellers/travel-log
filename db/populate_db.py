@@ -6,13 +6,13 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import psycopg2
 import srtm
-from timezonefinder import TimezoneFinder
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
+from timezonefinder import TimezoneFinder
+from zoneinfo import ZoneInfo
 
 # Initialize elevation data (files will be cached in a local directory)
 elevation_data = srtm.get_data()
@@ -22,8 +22,25 @@ _timezone_finder = TimezoneFinder()
 
 # EXIF-style timestamp: "2024:07:27 07:38:52" (local time at photo location)
 PHOTO_TIMESTAMP_FMT = "%Y:%m:%d %H:%M:%S"
+# Filename timestamp e.g. "2024-08-04 17.02.35.jpg"
+PHOTO_FILENAME_TIMESTAMP_FMT = "%Y-%m-%d %H.%M.%S"
 
 NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+
+
+def _timestamp_str_from_filename(filename):
+    """
+    Extract local timestamp from a filename like "2024-08-04 17.02.35.jpg".
+    Returns a string in PHOTO_TIMESTAMP_FMT for use with _parse_photo_time, or None.
+    """
+    if not filename:
+        return None
+    base = Path(filename).stem  # e.g. "2024-08-04 17.02.35"
+    try:
+        dt = datetime.strptime(base, PHOTO_FILENAME_TIMESTAMP_FMT)
+        return dt.strftime(PHOTO_TIMESTAMP_FMT)
+    except ValueError:
+        return None
 
 
 def _parse_photo_time(local_ts_str, lat, lon):
@@ -222,7 +239,6 @@ def run_photos_etl(conn, photos_dir):
     """
     Populate the photos table from JSONL files in photos_dir.
     Each line is a JSON object with filename, caption, timestamp, and location.
-    Does not populate waypoint_id, time_taken, or embedding (TODOs for later).
     """
     photos_dir = Path(photos_dir)
     if not photos_dir.is_dir():
@@ -232,6 +248,30 @@ def run_photos_etl(conn, photos_dir):
     if not jsonl_files:
         print(f"No .jsonl files found in {photos_dir}")
         return
+
+    # -------------------------------------------------------------------------
+    # TODO: Waypoint timestamps (start_time / end_time) are not trustworthy.
+    #       Prefer exploring assignment by location (e.g. nearest waypoint by
+    #       distance, or point-in-polygon if we had regions) instead of time
+    #       windows. This time-based match is a stopgap.
+    # -------------------------------------------------------------------------
+    cur = conn.cursor()
+    cur.execute("SELECT id, start_time, end_time FROM waypoints ORDER BY start_time NULLS LAST")
+    waypoint_windows = cur.fetchall()  # list of (id, start_time, end_time)
+
+    def waypoint_id_for_time(t):
+        if t is None:
+            return None
+        for wp_id, start, end in waypoint_windows:
+            if start is None:
+                continue
+            if t < start:
+                continue
+            if end is None:
+                return wp_id
+            if t < end:
+                return wp_id
+        return None
 
     rows = []
     for path in sorted(jsonl_files):
@@ -257,14 +297,16 @@ def run_photos_etl(conn, photos_dir):
                     location_wkt = f"POINT({lon} {lat})"
                 else:
                     location_wkt = None
-                # Timestamp is in local time at photo location; resolve timezone from lat/lon
+                # Timestamp is in local time at photo location; resolve timezone from lat/lon.
+                # Fall back to parsing filename (e.g. "2024-08-04 17.02.35.jpg") when missing.
+                ts_str = data.get("timestamp") or _timestamp_str_from_filename(filename)
                 time_taken, time_taken_local, time_taken_local_tz = _parse_photo_time(
-                    data.get("timestamp"), lat, lon
+                    ts_str, lat, lon
                 )
-                # TODO: set waypoint_id (e.g. by matching time_taken to waypoint start/end)
+                waypoint_id = waypoint_id_for_time(time_taken)
                 # TODO: set embedding from caption (e.g. via embedding service)
                 rows.append((
-                    None,  # waypoint_id
+                    waypoint_id,
                     filename,
                     caption,
                     time_taken,
@@ -332,16 +374,13 @@ if __name__ == "__main__":
             raise
 
     photos_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
-    photos_files_list = list(Path(photos_dir).glob("*.jsonl"))
     print(f"Populating photos from {photos_dir}...")
-    for f in photos_files_list:
-        print(f"Processing {f}...")
-        try:
-            run_photos_etl(connection, f)
-            print("Success!")
-        except Exception:
-            connection.close()
-            print("Failed to process")
-            raise
+    try:
+        run_photos_etl(connection, photos_dir)
+        print("Success!")
+    except Exception:
+        connection.close()
+        print("Failed to process")
+        raise
 
     connection.close()
