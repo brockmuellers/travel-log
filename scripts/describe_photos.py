@@ -4,6 +4,7 @@ import os
 import time
 from datetime import datetime
 
+from dotenv import load_dotenv
 from ollama import chat
 from PIL import Image
 
@@ -101,13 +102,8 @@ def get_image_metadata(file_path):
 
     return metadata
 
-def generate_captions(image_dir):
-    # 1. Format the JSON filename with the current date
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    jsonl_filename = f"captions_{current_date}.jsonl"
-    jsonl_path = os.path.join(image_dir, jsonl_filename)
-
-    # 2. Load existing progress if the file already exists
+def generate_captions(image_dir, jsonl_path):
+    # Load existing progress if the file already exists
     processed_files = set()
 
     # 1. Load existing progress by reading line-by-line
@@ -183,17 +179,23 @@ def generate_captions(image_dir):
             remaining_photos = image_file_count - i - 1
             print(f"Processed {filename} in {elapsed_time:.2f} seconds. {remaining_photos} remaining.")
 
-    print(f"\nDone! Captions saved to {jsonl_filename}")
+    print(f"\nDone! Captions saved to {jsonl_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process a directory of images to generate AI captions and extract EXIF/PostGIS data.")
+    load_dotenv()
 
-    parser.add_argument("directory", type=str, help="The path to the folder containing your images.")
+    parser = argparse.ArgumentParser(description="Process a directory of images to generate AI captions and extract EXIF/PostGIS data.")
+    parser.add_argument("year_month", type=str, help="Year and month of photos, e.g. 2024/07 or 2025/12.")
 
     args = parser.parse_args()
 
-    # Validate that the provided path actually exists and is a directory
-    if not os.path.isdir(args.directory):
-        print(f"Error: The directory '{args.directory}' does not exist or is not a valid folder.")
+    image_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "photos", args.year_month)
+    if not os.path.isdir(image_dir):
+        print(f"Error: The directory '{image_dir}' does not exist or is not a valid folder.")
     else:
-        generate_captions(args.directory)
+        output_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
+        os.makedirs(output_dir, exist_ok=True)
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        output_filename = f"captions_{args.year_month.replace('/', '-')}_{current_date}.jsonl"
+        jsonl_path = os.path.join(output_dir, output_filename)
+        generate_captions(image_dir, jsonl_path)
