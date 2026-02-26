@@ -262,14 +262,18 @@ def run_photos_etl(conn, photos_dir):
     def waypoint_id_for_time(t):
         if t is None:
             return None
-        for wp_id, start, end in waypoint_windows:
+        for i, (wp_id, start, end) in enumerate(waypoint_windows):
             if start is None:
                 continue
             if t < start:
                 continue
-            if end is None:
-                return wp_id
-            if t < end:
+            if end is not None:
+                if t < end:
+                    return wp_id
+                continue
+            # end is None (last waypoint of a trip): only match if no later waypoint has start <= t
+            next_start = waypoint_windows[i + 1][1] if i + 1 < len(waypoint_windows) else None
+            if next_start is None or t < next_start:
                 return wp_id
         return None
 

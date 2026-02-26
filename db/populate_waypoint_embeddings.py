@@ -129,8 +129,10 @@ def populate_embeddings(json_file_path):
         conn.close()
 
 if __name__ == "__main__":
-    # TODO: prioritize the gemini3pro file if it exists
-    inputs = list(Path(INPUT_DIR).glob("*.json"))
+    # If there are multiple files for the same trip, with different models,
+    # we just process them in alphabetical order.
+    # Do I want more consistency? gemini3pro comes after gemini3fp
+    inputs = sorted(Path(INPUT_DIR).glob("*.json"))
 
     for infile in inputs:
         populate_embeddings(infile)
