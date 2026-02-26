@@ -56,6 +56,20 @@ CREATE TABLE IF NOT EXISTS track_points (
     elevation_meters NUMERIC
 );
 
+CREATE TABLE IF NOT EXISTS photos (
+    id SERIAL PRIMARY KEY,
+    waypoint_id INTEGER REFERENCES waypoints(id),
+    filename TEXT,
+    caption TEXT,
+    -- All of these time columns might be overkill but I'm not sure what my usage patterns will be yet
+    time_taken TIMESTAMPTZ,
+    time_taken_local TIMESTAMP,
+    time_taken_local_tz TEXT,
+    location GEOGRAPHY(POINT, 4326),
+    location_metadata JSONB,
+    embedding vector(384) -- populated from the caption
+);
+
 -- TODO evaluate the necessity of these
 CREATE INDEX idx_trips_route ON trips USING GIST (route);
 CREATE INDEX idx_waypoints_loc ON waypoints USING GIST (location);
