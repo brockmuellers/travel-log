@@ -1,20 +1,63 @@
 import contextlib
+import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import srtm
+from timezonefinder import TimezoneFinder
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
 # Initialize elevation data (files will be cached in a local directory)
 elevation_data = srtm.get_data()
 
+# For resolving timezone from (lat, lon) in photos ETL
+_timezone_finder = TimezoneFinder()
+
+# EXIF-style timestamp: "2024:07:27 07:38:52" (local time at photo location)
+PHOTO_TIMESTAMP_FMT = "%Y:%m:%d %H:%M:%S"
+
 NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+
+
+def _parse_photo_time(local_ts_str, lat, lon):
+    """
+    Parse EXIF-style local timestamp and resolve timezone at (lat, lon).
+
+    Returns (time_taken_utc, time_taken_local, time_taken_local_tz) where:
+      - time_taken_utc: timezone-aware datetime in UTC (for time_taken column)
+      - time_taken_local: naive datetime of the original local time (for time_taken_local column)
+      - time_taken_local_tz: IANA timezone name e.g. "America/Los_Angeles" (for time_taken_local_tz column)
+    On failure returns (None, None, None).
+    """
+    if not local_ts_str or lat is None or lon is None:
+        return (None, None, None)
+    try:
+        dt_naive = datetime.strptime(local_ts_str.strip(), PHOTO_TIMESTAMP_FMT)
+    except ValueError:
+        return (None, None, None)
+    tz_name = _timezone_finder.timezone_at(lat=lat, lng=lon)
+    if not tz_name:
+        return (None, None, None)
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        return (None, None, None)
+    utc_dt = dt_naive.replace(tzinfo=tz).astimezone(timezone.utc)
+    assert utc_dt.tzinfo is timezone.utc, "must return UTC timezone-aware datetime"
+    return (utc_dt, dt_naive, tz_name)
+
+
+def _local_to_utc(local_ts_str, lat, lon):
+    """Return UTC timezone-aware datetime for the photo timestamp, or None."""
+    utc_dt, _, _ = _parse_photo_time(local_ts_str, lat, lon)
+    return utc_dt
 
 def connect_to_database(db_params):
     """ Connect to the PostgreSQL database server and return a connection object. """
@@ -33,13 +76,13 @@ def connect_to_database(db_params):
 def get_text(elem, tag):
     item = elem.find(tag, NS)
     return item.text if item is not None else None
-    
+
 def run_findpenguins_gpx_etl(conn, file_path):
     """ Import data from FindPenguins GPX file given its path and a DB connection object """
     tree = ET.parse(file_path)
     root = tree.getroot()
     ns = {'gpx': 'http://www.topografix.com/GPX/1/1'}
-    
+
     # 1. Parse Waypoints (already ordered by time in the input)
     waypoints = []
     for wpt in root.findall('gpx:wpt', NS):
@@ -50,7 +93,7 @@ def run_findpenguins_gpx_etl(conn, file_path):
             'lat': float(wpt.get('lat')),
             'lon': float(wpt.get('lon'))
         })
-    
+
     # Sort waypoints by time to ensure we can find the "previous" one easily
     # UNNECESSARY, they are already ordered
     #waypoints.sort(key=lambda x: x['time'])
@@ -58,7 +101,7 @@ def run_findpenguins_gpx_etl(conn, file_path):
     # 2. Parse Tracks (Grouped by Timestamp)
     raw_points = root.findall('.//gpx:trkpt', NS)
     grouped_tracks = defaultdict(list)
-    
+
     for pt in raw_points:
         timestamp = get_text(pt, 'gpx:time')
         grouped_tracks[timestamp].append({
@@ -69,7 +112,7 @@ def run_findpenguins_gpx_etl(conn, file_path):
         })
 
     sorted_timestamps = sorted(grouped_tracks.keys())
-    
+
     # --- DATABASE INSERTION ---
     cur = conn.cursor()
 
@@ -82,54 +125,54 @@ def run_findpenguins_gpx_etl(conn, file_path):
         VALUES (%s, %s, %s) RETURNING id
     """, (trip_name, waypoints[0]['time'], waypoints[-1]['time']))
     trip_id = cur.fetchone()[0]
-    
+
     # B. Insert Waypoints & Build Lookup Map
     # Lookup map will be used to figure out which start/end waypoints correspond to a track
     print("Inserting Waypoints...")
     # Map: timestamp_string -> database_id
     time_to_wp_id = {}
-    
+
     # Also keep a list of (timestamp, id) tuples to look up the "previous" waypoint
-    wp_timeline = [] 
+    wp_timeline = []
 
     # A waypoint's end time should be the start time of the next waypoint
     waypoint_end_times = [None] * len(waypoints) # last waypoint has no end time
     for i, val in enumerate(waypoints):
         if i != len(waypoints) - 1:
             waypoint_end_times[i] = waypoints[i+1]['time']
-        
+
     for i, wp in enumerate(waypoints):
         cur.execute("""
             INSERT INTO waypoints (trip_id, name, description, start_time, end_time, location)
             VALUES (%s, %s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
             RETURNING id
         """, (trip_id, wp['name'], wp['desc'], wp['time'], waypoint_end_times[i], wp['lon'], wp['lat']))
-        
+
         wp_id = cur.fetchone()[0]
         time_to_wp_id[wp['time']] = wp_id
         wp_timeline.append((wp['time'], wp_id))
-        
+
     # C. Insert Tracks linked to Waypoints, as well as Points
     print("Inserting Tracks...")
     for i, ts in enumerate(sorted_timestamps):
         points = grouped_tracks[ts]
-        
+
         # Determine Waypoint Links
         # The track ends at the waypoint with the matching timestamp
-        end_wp_id = time_to_wp_id.get(ts) 
-        
+        end_wp_id = time_to_wp_id.get(ts)
+
         # The track starts at the previous waypoint in the timeline
         # If this is the first track segment, start_wp might be None or the first waypoint itself
         start_wp_id = None
-        
+
         # Find the index of the current timestamp in our waypoint timeline
-        # We iterate to find where 'ts' fits. 
+        # We iterate to find where 'ts' fits.
         # (In your file, track_time usually equals waypoint_time, so we look for exact match)
         current_wp_index = next((idx for idx, val in enumerate(wp_timeline) if val[0] == ts), None)
-        
+
         if current_wp_index is not None and current_wp_index > 0:
             start_wp_id = wp_timeline[current_wp_index - 1][1]
-        
+
         # Construct Geometry
         if len(points) > 1:
             coords = ", ".join([f"{p['lon']} {p['lat']}" for p in points])
@@ -140,21 +183,21 @@ def run_findpenguins_gpx_etl(conn, file_path):
 
         # Insert Track
         cur.execute("""
-            INSERT INTO tracks 
+            INSERT INTO tracks
             (trip_id, start_waypoint_id, end_waypoint_id, source, start_time, end_time_incl, route)
             VALUES (%s, %s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326))
             RETURNING id
         """, (
-            trip_id, 
-            start_wp_id, 
-            end_wp_id, 
-            'FindPenguins', 
-            points[0]['time'], 
-            points[-1]['time'], 
+            trip_id,
+            start_wp_id,
+            end_wp_id,
+            'FindPenguins',
+            points[0]['time'],
+            points[-1]['time'],
             wkt
         ))
         track_id = cur.fetchone()[0]
-        
+
         # Insert Points
         # Hydrate elevation data
         for p in points:
@@ -165,39 +208,120 @@ def run_findpenguins_gpx_etl(conn, file_path):
             except Exception as e:
                 print(f"failed to load elevation: {e}")
                 continue
-                
+
         db_points = [(track_id, p['time'], p['lon'], p['lat'], p['ele']) for p in points]
         execute_values(cur, """
             INSERT INTO track_points (track_id, recorded_at, location, elevation_meters)
             VALUES %s
         """, db_points, template="(%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s)")
-        
+
     conn.commit()
+
+
+def run_photos_etl(conn, photos_dir):
+    """
+    Populate the photos table from JSONL files in photos_dir.
+    Each line is a JSON object with filename, caption, timestamp, and location.
+    Does not populate waypoint_id, time_taken, or embedding (TODOs for later).
+    """
+    photos_dir = Path(photos_dir)
+    if not photos_dir.is_dir():
+        raise FileNotFoundError(f"Photos directory not found: {photos_dir}")
+
+    jsonl_files = list(photos_dir.glob("*.jsonl"))
+    if not jsonl_files:
+        print(f"No .jsonl files found in {photos_dir}")
+        return
+
+    rows = []
+    for path in sorted(jsonl_files):
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError as e:
+                    print(f"Skipping invalid JSON in {path}: {e}")
+                    continue
+                filename = data.get("filename")
+                caption = data.get("caption")
+                location = data.get("location") or {}
+                # location_metadata stores the full "location" object from the input
+                location_metadata = json.dumps(location) if location else None
+                lat = location.get("latitude")
+                lon = location.get("longitude")
+                # Only set geography point when we have valid lat/lon
+                if lat is not None and lon is not None:
+                    location_wkt = f"POINT({lon} {lat})"
+                else:
+                    location_wkt = None
+                # Timestamp is in local time at photo location; resolve timezone from lat/lon
+                time_taken, time_taken_local, time_taken_local_tz = _parse_photo_time(
+                    data.get("timestamp"), lat, lon
+                )
+                # TODO: set waypoint_id (e.g. by matching time_taken to waypoint start/end)
+                # TODO: set embedding from caption (e.g. via embedding service)
+                rows.append((
+                    None,  # waypoint_id
+                    filename,
+                    caption,
+                    time_taken,
+                    time_taken_local,
+                    time_taken_local_tz,
+                    location_wkt,
+                    location_metadata,
+                    None,  # embedding
+                ))
+
+    if not rows:
+        print("No photo records to insert.")
+        return
+
+    cur = conn.cursor()
+    for row in rows:
+        (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz,
+         location_wkt, location_metadata, embedding) = row
+        if location_wkt:
+            cur.execute("""
+                INSERT INTO photos (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location, location_metadata, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s::jsonb, %s)
+            """, (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location_wkt, location_metadata, embedding))
+        else:
+            cur.execute("""
+                INSERT INTO photos (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location, location_metadata, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, NULL, %s::jsonb, %s)
+            """, (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location_metadata, embedding))
+
+    conn.commit()
+    print(f"Inserted {len(rows)} photo(s).")
+
 
 if __name__ == "__main__":
     load_dotenv()
     # NOTE: USING RAW UN-OBFUSCATED GPX FILES FOR NOW
-    DEFAULT_GPX_DIR = os.path.join(os.getenv("PRIVATE_DATA_DIR"),"findpenguins")
-    
-    files_list = list(Path(DEFAULT_GPX_DIR).glob("*.gpx"))
-    
-    print(f"Importing {len(files_list)} files")
-    
+    gpx_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"),"findpenguins")
+
+    waypoint_files_list = list(Path(gpx_dir).glob("*.gpx"))
+
+    print(f"Importing {len(waypoint_files_list)} files")
+
     # TODO remove this debug line
-    #files_list = files_list[0:1]
-    
+    #waypoint_files_list = waypoint_files_list[0:1]
+
     db_params = {
-        "host": os.getenv("DATABASE_HOST"),   
+        "host": os.getenv("DATABASE_HOST"),
         "database": os.getenv("DATABASE_NAME"),
-        "user": os.getenv("DATABASE_USER"),  
+        "user": os.getenv("DATABASE_USER"),
         "password": os.getenv("DATABASE_PASSWORD"),
         "port": os.getenv("DATABASE_PORT")
     }
     connection = connect_to_database(db_params)
     if connection is None:
         sys.exit(1)
-    
-    for f in files_list:
+
+    for f in waypoint_files_list:
         print(f"Processing {f}...")
         try:
             run_findpenguins_gpx_etl(connection, f)
@@ -206,5 +330,18 @@ if __name__ == "__main__":
             connection.close()
             print("Failed to process")
             raise
-    
+
+    photos_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
+    photos_files_list = list(Path(photos_dir).glob("*.jsonl"))
+    print(f"Populating photos from {photos_dir}...")
+    for f in photos_files_list:
+        print(f"Processing {f}...")
+        try:
+            run_photos_etl(connection, f)
+            print("Success!")
+        except Exception:
+            connection.close()
+            print("Failed to process")
+            raise
+
     connection.close()

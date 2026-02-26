@@ -1,2 +1,5 @@
 # For running tests (from repo root: pytest tests/ -v)
 pytest>=7.0.0
+
+# For db/populate_db.py (photos ETL: timezone from lat/lon)
+timezonefinder>=6.0.0
