@@ -1,5 +1,5 @@
 data/
 .env
 .env.prod
-server
+/server
 __pycache__/
