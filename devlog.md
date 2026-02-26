@@ -99,3 +99,13 @@ Docker issue - `docker compose up -d` results in `WARN[0000] No services to buil
 It's time to add some basic tests. It's silly not to, given that AI can spit them out. That being said, I'm not 100% sold on all of the architecture and implementation (because AI spit some of it out) so I'm going to keep it super basic for now, for ease of refactoring. CI would be handy but it's not a priority for now.
 
 I am discovering that when it comes to actual logical errors, I am much better at debugging than Cursor is. It seems to change things that appear wrong and hope that the tests will pass. I prefer to figure out what the error is and then just change that thing. No wonder code balloons these days.
+
+It's not the top priority, but I want to start generating photo descriptions - lots more context than just the blog posts can provide. Some minor research leads me to moondream2, run with ollama. I'm going to run some speed tests. I have >10k photos so it needs to be somewhat speedy.
+
+2026-02-25
+
+Speed tests on moondream2 aren't great but I could make it work. Performance is no good though - it's obsessed with ice tea for some reason. Discovered the [huggingface leaderboard](https://huggingface.co/spaces/opencompass/open_vlm_leaderboard), so I'm seeing what I can run from there. Running this locally may be a pipe dream anyway, so I'll look into what API options are out there as well. I'll perhaps need to pare down my photos to get good results in a reasonable amount of time. Maybe I'll see if I can get extremely basic descriptions for most, and get a few really good descriptions for the top ~500 or so.
+- `moondream:v2` has about 50% accuracy, at about 60 seconds per photo. `Caption: iced tea in a white cup with blue lettering on it is being sipped by a man wearing a red jacket and sunglasses.`
+- `qwen2.5vl:3b` is nearly perfect, but takes 18 minutes per photo. `Caption: Chocolatier in the making: A moment of indulgence on the train, savoring a handmade chocolate bar.`
+- `jyan1/paligemma-mix-224:latest` - can't run it locally I guess, seems like resource constraints
+- `ahmadwaqar/smolvlm2-2.2b-instruct:latest` is a step better than moondream, maybe 80% accuracy, and only takes 15-30 seconds per photo. Fairly flowery and not the best at following instructions - I only want the caption. `Caption: "A person wearing a vibrant red jacket is in the midst of taking a bite from a sandwich while seated comfortably inside a vehicle with blue seats." This image captures an intimate moment of someone enjoying their meal during travel, surrounded by the hustle and bustle of daily life on the go. The use of vivid colors in the description adds depth to the scene, making it more visually appealing and engaging for the viewer.`

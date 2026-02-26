@@ -6,6 +6,7 @@
 	* Scrape data that includes travel mode
 	* Get travel mode into GPX
 	* Color map lines
+* Generate photo descriptions
 
 **Medium:**
 * Explore different embeddings
