@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
+	"github.com/stretchr/testify/assert"
 )
 
 // Integration tests require a real DB (e.g. docker-compose up db) and DATABASE_URL set.
@@ -36,16 +37,11 @@ func TestIntegration_Health(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /health: status %d, want 200", rec.Code)
-	}
+	assert.Equal(t, http.StatusOK, rec.Code, "GET /health status")
 	var out map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
-		t.Fatalf("decode health response: %v", err)
-	}
-	if out["status"] != "ok" {
-		t.Errorf("health status = %q, want ok", out["status"])
-	}
+	err := json.NewDecoder(rec.Body).Decode(&out)
+	assert.NoError(t, err, "decode health response")
+	assert.Equal(t, "ok", out["status"], "health status must be ok")
 }
 
 func TestIntegration_WaypointsCount(t *testing.T) {
@@ -67,16 +63,11 @@ func TestIntegration_WaypointsCount(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /waypoints/count: status %d, want 200", rec.Code)
-	}
+	assert.Equal(t, http.StatusOK, rec.Code, "GET /waypoints/count status")
 	var out map[string]int
-	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
-		t.Fatalf("decode count response: %v", err)
-	}
-	if _, ok := out["count"]; !ok {
-		t.Errorf("count response missing \"count\" key: %v", out)
-	}
+	err := json.NewDecoder(rec.Body).Decode(&out)
+	assert.NoError(t, err, "decode count response")
+	assert.Contains(t, out, "count", "count response must have \"count\" key")
 }
 
 func TestIntegration_WaypointsSearch(t *testing.T) {
@@ -98,23 +89,15 @@ func TestIntegration_WaypointsSearch(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /waypoints/search: status %d, want 200. body: %s", rec.Code, rec.Body.Bytes())
-	}
+	assert.Equal(t, http.StatusOK, rec.Code, "GET /waypoints/search status, body: %s", rec.Body.Bytes())
 	body := rec.Body.Bytes()
-	if len(body) == 0 {
-		t.Fatalf("GET /waypoints/search: returned 200 but body is empty")
-	}
+	assert.NotEmpty(t, body, "GET /waypoints/search body must not be empty")
 	var results []map[string]interface{}
-	if err := json.Unmarshal(body, &results); err != nil {
-		t.Fatalf("decode search response: %v (status=%d body=%q)", err, rec.Code, body)
-	}
-	// Response must be a JSON array (may be empty). Each element must have the contract fields.
+	err := json.Unmarshal(body, &results)
+	assert.NoError(t, err, "decode search response")
 	for i, r := range results {
 		for _, key := range []string{"name", "description", "distance", "score"} {
-			if _, ok := r[key]; !ok {
-				t.Errorf("search result [%d] missing key %q", i, key)
-			}
+			assert.Contains(t, r, key, "search result [%d] must have key %q", i, key)
 		}
 	}
 }
@@ -129,19 +112,13 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 		t.Skip("DATABASE_URL or DATABASE_CONFIG not set; skipping integration test")
 	}
 	config, err := pgxpool.ParseConfig(connStr)
-	if err != nil {
-		t.Fatalf("parse config: %v", err)
-	}
+	assert.NoError(t, err, "parse config")
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		return pgxvec.RegisterTypes(ctx, conn)
 	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	if err := pool.Ping(context.Background()); err != nil {
-		t.Fatalf("ping: %v", err)
-	}
+	assert.NoError(t, err, "connect")
+	assert.NoError(t, pool.Ping(context.Background()), "ping")
 	return pool
 }
 
