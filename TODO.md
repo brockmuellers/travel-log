@@ -25,7 +25,7 @@
 **Medium:**
 * Refactor go server
 * Split up (and clean up) logic in frontend file
-* Explore moving frontend logic to travel repo (source as link)
+* Explore moving frontend logic to travel repo (source as link, or copy with gh actions, or other?)
 * Set up a local test DB
 * Python tests for data transformation (and maybe full integration test?)
 
@@ -40,10 +40,17 @@
 
 ### Documentation
 
+**High:**
+* Add photo processing flow to excalidraw
+
 **Medium:**
 * Improve excalidraw (maybe interim files in same column as source files) and export to image
 
 ### Infrastructure
+
+**High:**
+* Expose embedding_service to public internet so I can bypass huggingfaces when my computer is on
+	* Refactor embedding_service to use similar API to huggingfaces (some API wrapper might be cleaner but it's not worth the effort yet)
 
 **Medium:**
 * Check cold start response times; might want something to ping my health endpoint regularly (14 minutes?) to keep render from going to sleep; maybe just during the day
