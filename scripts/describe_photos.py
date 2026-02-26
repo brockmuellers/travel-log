@@ -7,7 +7,8 @@ from datetime import datetime
 from ollama import chat
 from PIL import Image
 
-PROMPT = "Write a short caption for this photo."
+#PROMPT = "Write a short caption for this photo."
+PROMPT = "Describe this image in a one-sentence caption."
 MODEL = "ahmadwaqar/smolvlm2-2.2b-instruct:latest"
 
 def get_image_metadata(file_path):
@@ -100,7 +101,7 @@ def get_image_metadata(file_path):
 
     return metadata
 
-def generate_captions(image_dir, prompt="Describe this image in a one-sentence caption."):
+def generate_captions(image_dir):
     # 1. Format the JSON filename with the current date
     current_date = datetime.now().strftime("%Y-%m-%d")
     jsonl_filename = f"captions_{current_date}.jsonl"
@@ -138,12 +139,6 @@ def generate_captions(image_dir, prompt="Describe this image in a one-sentence c
 
             # --- Metadata Extraction & Filtering ---
             metadata = get_image_metadata(os.path.join(image_dir, filename))
-            camera_model = str(metadata.get('model', ''))
-
-            # Filter for Pixel 6
-            if "Pixel 6" not in camera_model:
-                print(f"Skipping {filename} (Camera: {camera_model or 'Unknown'})")
-                continue
 
             file_path = os.path.join(image_dir, filename)
 
@@ -153,7 +148,7 @@ def generate_captions(image_dir, prompt="Describe this image in a one-sentence c
                     model=MODEL,
                     messages=[{
                         'role': 'user',
-                        'content': prompt,
+                        'content': PROMPT,
                         'images': [file_path]
                     }],
                     options={

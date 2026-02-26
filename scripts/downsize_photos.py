@@ -8,7 +8,6 @@ from PIL import Image
 """
 Downsize a directory of photos. Skip duplicates/near-duplicates, just using the last one in a series.
 Copies exif data. Only copies photos from my phone (no whatsapp photos, screenshots etc).
-
 Run like this:
 python downsize_photos.py /home/sara/Dropbox/Pictures/phone/2024/10 /home/sara/repos/travel-log/data/private/photos/2024/10
 """
@@ -70,7 +69,7 @@ def process_photos(input_folder, output_folder, max_size=(1920, 1920), hash_cuto
                 exif = img.getexif()
                 # EXIF tag 272 is the industry standard for 'Model'
                 model = exif.get(272) if exif else None
-                if not model or "Pixel 6" not in str(model):
+                if not model or ("Pixel 6" not in str(model) and "Pixel 10 Pro" not in str(model)):
                     print(f"Skipping {filename} -> Model is '{model}'")
                     continue
 
