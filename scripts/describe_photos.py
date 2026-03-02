@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 import time
 from datetime import datetime
 
@@ -11,6 +12,12 @@ from PIL import Image
 #PROMPT = "Write a short caption for this photo."
 PROMPT = "Describe this image in a one-sentence caption."
 MODEL = "ahmadwaqar/smolvlm2-2.2b-instruct:latest"
+
+
+def has_not_screened_marker(directory: str) -> bool:
+    """Return True if a file named 'NOT_SCREENED' (no extension) exists in the given directory."""
+    marker_path = os.path.join(directory, "NOT_SCREENED")
+    return os.path.isfile(marker_path)
 
 def get_image_metadata(file_path):
     """Extracts camera model, timestamp, and rich GPS coordinates from an image."""
@@ -192,10 +199,17 @@ if __name__ == "__main__":
     image_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "photos", args.year_month)
     if not os.path.isdir(image_dir):
         print(f"Error: The directory '{image_dir}' does not exist or is not a valid folder.")
-    else:
-        output_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
-        os.makedirs(output_dir, exist_ok=True)
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        output_filename = f"captions_{args.year_month.replace('/', '-')}_{current_date}.jsonl"
-        jsonl_path = os.path.join(output_dir, output_filename)
-        generate_captions(image_dir, jsonl_path)
+        sys.exit(1)
+
+    # Verify that the directory has been manually "screened" for sensitive content
+    if has_not_screened_marker(image_dir):
+        print(f"Error: The directory '{image_dir}' has a 'NOT_SCREENED' marker file. Skipping...")
+        sys.exit(1)
+
+    # Build paths from input year/month string
+    output_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
+    os.makedirs(output_dir, exist_ok=True)
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    output_filename = f"captions_{args.year_month.replace('/', '-')}_{current_date}.jsonl"
+    jsonl_path = os.path.join(output_dir, output_filename)
+    generate_captions(image_dir, jsonl_path)
