@@ -6,9 +6,7 @@ Visualization and insights from my sabbatical travels.
 
 After spending 18 months travelling as a sabbatical, I have collected an immense amount of data. I want to create an enriched map-based travel log that integrates all of my data sources. Perhaps there will be insights available from it, but if not, it will be a cool keepsake.
 
-I'm interested in learning more about modern ML workflows (vectorization and RAG, for example), as well as handling spatial data, so I'll shoehorn those subjects in.
-
-A super stretch goal: a flythrough video that follows the main GPX track and displays the most interesting data/insights for each location.
+I'm interested in learning more about modern ML workflows (vectorization and RAG, for example), as well as handling spatial data, so I'm shoehorning those subjects in.
 
 ## Data Sources
 
@@ -22,107 +20,42 @@ Primary data sources:
 Secondary sources:
 * My husband's travel blog, with one post per country - might be useful to provide context for an LLM
 * Google location history - this is not super accurate (there are major gaps and drift)
-* Data from public sources: global eBird and iNaturalist observations, other biodiversity data sources, weather + sunrise/sunset + AQI, OpenStreetMap "Points of Interest", major events (GDELT Project?), holidays, government travel advisories, opinionated travel content from Wikivoyage, Alltrails, WWF ecoregions
+* Data from public sources: global eBird and iNaturalist observations, other biodiversity data sources, weather + sunrise/sunset + AQI, altitude, OpenStreetMap "Points of Interest", major events (GDELT Project?), holidays, government travel advisories, opinionated travel content from Wikivoyage, Alltrails, WWF ecoregions
 * Data from non-public sources (can't share it, but it would be interesting to view in a local implementation): Strava/Gaia heatmaps, Lonely Planet & Rough Guide guidebooks
 
-## Known Unknowns & Risks
+## App Architecture
 
-* Safely handling privacy concerns - I can handle obfuscating sensitive locations but there may be other sensitive data hiding
-* Timestamp precision - some data is precisely timestamped but other data is only accurate to the day; plus sources may use different time zones, and we frequently switched time zones
-* Geotagging precision - the garmin tracks, and to a lesser extent geotagged photos, are the only sources I really trust
-* Data visualization - UI is not my area of expertise, and there's a lot of fuzzy data here
-* I've never worked with embedded vector data and RAG, but want to give it a shot for this project. I have no idea how large an undertaking this is - I can definitely create something nominally functional, but will that really give me the fun insights I'm looking for? Maybe I'll need to go the classical data science route for that.
-* Infrastructure - this is feasible to run locally, but I want to share the resulting product with others. Can I do this with free or almost-free infrastructure? A cursory glance says yes, particularly with access controls, but I need to do more research.
+### Data and ETL
 
-## Project Phases
-
-* "Hello World" travel map
-    * Simple map on my static Github Pages website, with all resources stored directly in the repo
-    * Download, process, and display the easy data - FindPenguins GPX, eBird checklists
-    * Obfuscate sensitive locations
-    * Use a mapping library that will scale
-* Local database & ETL
-    * Probably postgres with postgis and pgvector - nice and flexible
-    * Play around with what data to use, preliminary data models, intermediate processing steps, and of course vector embeddings
-    * Play around with queries and RAG (might just use RAG for pre-computed summaries for simplicity)
-* Visualization
-    * Set up a super basic server for the database (go would be easy for me)
-    * Lots of visual design decisions to make here! Ideally it can all be built on top of the initial map, and I'll keep v1 as simple as I reasonably can
-    * Probably will need to heavily alter data models as I make UI decisions
-* Public deployment
-    * Decide on free/low-cost infrastructure for the database and server, keeping privacy and authorization in mind
-    * Deploy and share!
-
-The timeline for this project is immensely flexible, but I'm aiming to timebox v1: <1 week for the initial travel map, ~2 weeks for the local database and data exploration, 1-2 weeks for visualization, and <1 week for deployment. It isn't a production system so I won't have production quality, or production timelines.
-
-## App notes
-
-### Running the Go Server
-
-A minimal Go server exposes queries against Postgres.
-
-**Setup:** Start Postgres (e.g. `docker compose up -d`), then from the repo root:
-
-```bash
-# Optional: set DB connection (defaults match docker-compose)
-# export DATABASE_URL="postgres://admin:password@localhost:5432/postgres?sslmode=disable"
-# or use DATABASE_CONFIG / DATABASE_HOST, DATABASE_USER, etc.
-
-# Run directly
-go run ./cmd/server
-
-# Or build an executable, then run it
-go build -o server ./cmd/server
-./server
-```
-
-Server listens on `:8081` unless you set `SERVER_ADDR`.
-
-Note to self: don't forget to `go mod tidy` before pushing if updating `go.mod`!
-
-### Semantic search (waypoints)
-
-The Go server can run semantic search over waypoints using a small Python embedding service (same model as waypoint embeddings: `BAAI/bge-small-en-v1.5`).
-
-**1. Start the embedding service** (from repo root):
-
-```bash
-# First time only, run the line below:
-# pip install -r embedding_service/requirements.txt
-EMBEDDING_SERVICE_PORT=5001 python embedding_service/main.py
-```
-
-Defaults: host `127.0.0.1`, port `5001`. Override with `EMBEDDING_SERVICE_HOST` and `EMBEDDING_SERVICE_PORT`.
-
-**2. Start the Go server** (as above). Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:5001` in `.env` if needed (that’s the default).
-
-**3. Search:**
-
-```bash
-curl "http://localhost:8081/waypoints/search?q=ancient%20temples"
-```
-
-### Testing
-
-**Go integration tests** (require a running Postgres with the app schema, e.g. `docker compose up -d db`):
-
-```bash
-export DATABASE_URL="postgres://admin:password@localhost:5432/postgres?sslmode=disable"
-go test -tags=integration ./cmd/server/
-```
-
-If `DATABASE_URL` (or `DATABASE_CONFIG`) is not set, the integration tests are skipped.
-
-**Python embedding dimension** (ensures the waypoint embedding pipeline still outputs 384 dimensions, matching the server and DB):
-
-```bash
-python tests/test_embedding_dimension.py
-```
-
-Or with pytest: `pytest tests/ -v`. The first run may be slow while the model downloads.
+My primary data sources are stored in a `data` directory (gitignored). Sensitive data is stored separately to avoid accidentally exposing un-obfuscated information. I use a number of python scripts to process that data into a display-ready format. A rough representation of the flow is found in `docs`.
 
 ### Database
 
-Command for updating my remote DB to match my local one:
+A Postgres database stores data for use by the server. Local DB starts with `docker compose up -d`.
 
-`source .env && docker exec travel_log_db pg_dump -U $DATABASE_USER -d $DATABASE_NAME --no-owner --no-privileges --clean --if-exists | psql "$NEON_CONNECTION"`
+The database is populated by scripts in `db`, which read from the `data` directory.
+
+### Go Server
+
+A minimal Go server exposes queries against Postgres, for use by the frontend. Requires a running postgres instance and embedding service.
+
+Note to self: don't forget to `go mod tidy` or `make install-deps` before pushing if updating `go.mod`!
+
+### Semantic search
+
+The Go server can run semantic search over waypoints using a small local Python embedding service (same model as waypoint embeddings: `BAAI/bge-small-en-v1.5`).
+
+Production semantic search is handled by the Huggingfaces API.
+
+**Testing**
+
+1. Start the servers with `make run-server` and `make run-embedding`
+2. `curl "http://localhost:8081/waypoints/search?q=ancient%20temples"`
+
+### Testing
+
+Just normal go tests and pytest. Run with `make`.
+
+### Local and remote environment
+
+Commands for running and deploying code are found in the `Makefile`. Sensitive environment variables are stored in normal `.env` files.
