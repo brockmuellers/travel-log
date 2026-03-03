@@ -1,5 +1,8 @@
 # Declare phony targets (targets that aren't actual files)
-.PHONY: help install-deps run-server run-embedding reload-db test-python test-go test
+.PHONY: help install-deps run-server run-embedding reload-db deploy-db test-python test-go test
+
+# Set shell to bash so I can use bash syntax
+SHELL := /bin/bash
 
 # The default target runs when you just type 'make'
 help:
@@ -8,6 +11,7 @@ help:
 	@echo "  make run-server     - Run the Go server"
 	@echo "  make run-embedding  - Run the Python embedding service"
 	@echo "  make reload-db      - Drop database and run the database population scripts"
+	@echo "  make deploy-db      - Copy local database data to remote postgres instance"
 	@echo "  make test-python    - Run all Python tests (db, embedding_service, scripts)"
 	@echo "  make test-go        - Run Go tests"
 	@echo "  make test           - Run both Go and Python tests"
@@ -30,6 +34,13 @@ run-embedding:
 reload-db:
 	@echo "Dropping database and running DB population scripts..."
 	./db/reload-db.sh
+
+deploy-db:
+	@echo "Copying local database to remote postgres instance..."
+	. .env && \
+	docker exec travel_log_db pg_dump \
+	-U $$DATABASE_USER -d $$DATABASE_NAME --no-owner --no-privileges --clean --if-exists | \
+	psql "$$NEON_CONNECTION"
 
 test-python:
 	@echo "Running Python tests..."
