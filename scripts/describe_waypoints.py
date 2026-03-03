@@ -1,9 +1,9 @@
-import argparse
 import json
 import os
 import time
 from typing import Any
 
+import click
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 GEMINI_MODEL = 'gemini-3-flash-preview'
-model_shorthand = "gemini3fp"   
+model_shorthand = "gemini3fp"
 # MODELS = {
 #     '25fl': 'gemini-2.5-flash-lite', # cheap and adequate at OCR but bad at following instructions, 10 RPM 20 RPD
 #     '25f': 'gemini-2.5-flash', # cheapish, a bit better than the lite, 5 RPM 20 RPD
@@ -30,7 +30,7 @@ THINKING_CONFIG=types.ThinkingConfig(include_thoughts=True, thinking_level="medi
 
 # TODO load from file
 PROMPT_TEMPLATE = """
-You are an editor filling in a template that describes destinations in a trip. 
+You are an editor filling in a template that describes destinations in a trip.
 Your input:
 - **Template:** [content below] a JSON list of "waypoints" (destinations) in chronological order. A placeholder "_general_" waypoint is included as well.
 - **Blog Post:** [uploaded file] a story, written in chronological order, about the trip; the post includes both text and photos.
@@ -39,7 +39,7 @@ Your input:
 {waypoints_data}
 
 ### INSTRUCTIONS
-Please read the blog post and analyze the photos, then generate a first-person description for each waypoint. 
+Please read the blog post and analyze the photos, then generate a first-person description for each waypoint.
 The description should be based only on the provided text and photos. Include as much information as you can.
 1. **Data integrity:** CRITICAL: **DO NOT** change the 'name' or 'date' fields, or order of waypoints. Use them exactly as provided in the input, even if the blog uses a different format.
 2. **Match by Date & Context:** Use the "arrival_date" in the JSON and the chronological flow of the blog to locate the correct section.
@@ -70,13 +70,13 @@ def validate_waypoints(
     output_data: list[dict[str, Any]] | str,
 ) -> tuple[bool, list[str]]:
     """
-    Validates that output_data matches input_data exactly, 
+    Validates that output_data matches input_data exactly,
     except for the 'description' field which must be populated.
-    
+
     Args:
         input_data: List[dict] or JSON string (the original source of truth)
         output_data: List[dict] or JSON string (the AI response)
-        
+
     Returns:
         (bool, list[str]): (IsValid, List of error messages)
     """
@@ -112,7 +112,7 @@ def validate_waypoints(
                         f"Item {i} mismatch on '{key}': "
                         f"Expected '{original_val}', Got '{generated[key]}'"
                     )
-            
+
             # C. Validate Description Field (Must be Filled)
             else:
                 if not generated[key] or len(generated[key].strip()) == 0:
@@ -133,7 +133,7 @@ def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, ver
         print("Processing file...")
         time.sleep(2)
         sample_file = client.files.get(name=sample_file.name)
-    if sample_file.state.name == "FAILED":  
+    if sample_file.state.name == "FAILED":
         raise ValueError("File upload failed.")
 
     # 3. Load your Waypoints JSON
@@ -205,21 +205,30 @@ def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, ver
         json.dump(output, f, indent=4)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fill in LLM-generated descriptions of waypoints based on a blog post PDF.")
-    parser.add_argument("trip_name", help="Trip name, e.g. 'southeast-asia'")
-    parser.add_argument("segment_names", nargs='+', help="Trip segment name, used to determine file names. E.g. '08-indonesia'. Accepts one or more names, separated by spaces.")
-    parser.add_argument('-v', '--verbose', action='store_true', help="Verbose mode")
-    args = parser.parse_args()
+@click.command()
+@click.argument("trip_name", type=str)
+@click.argument("segment_names", nargs=-1, required=True, type=str)
+@click.option("-v", "--verbose", is_flag=True, help="Verbose mode")
+def run(trip_name: str, segment_names: tuple[str, ...], verbose: bool) -> None:
+    """
+    Fill in LLM-generated descriptions of waypoints based on a blog post PDF.
 
-    print(f"Processing segments: {args.segment_names}")
-    for segment_name in args.segment_names: 
-        waypoints_filename = f"{args.trip_name}_waypoints_{segment_name}.json"
-        pdf_filename = f"{args.trip_name}_{segment_name}.pdf"
-        output_filename = f"{args.trip_name}_{model_shorthand}_{segment_name}.json"
+    TRIP_NAME: Trip name, e.g. 'southeast-asia'
+    SEGMENT_NAMES: One or more trip segment names, e.g. '08-indonesia'
+    """
+
+    print(f"Processing segments: {segment_names}")
+    for segment_name in segment_names:
+        waypoints_filename = f"{trip_name}_waypoints_{segment_name}.json"
+        pdf_filename = f"{trip_name}_{segment_name}.pdf"
+        output_filename = f"{trip_name}_{model_shorthand}_{segment_name}.json"
 
         waypoints_file = os.path.join(waypoints_root_path, waypoints_filename)
         pdf_file = os.path.join(pdf_root_path, pdf_filename)
         output_file = os.path.join(output_root_path, output_filename)
 
-        describe_waypoints(waypoints_file, pdf_file, output_file, args.verbose)
+        describe_waypoints(waypoints_file, pdf_file, output_file, verbose)
+
+
+if __name__ == "__main__":
+    run()

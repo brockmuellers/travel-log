@@ -1,16 +1,8 @@
-import argparse
 import os
 
+import click
 import imagehash
 from PIL import Image
-
-
-"""
-Downsize a directory of photos. Skip duplicates/near-duplicates, just using the last one in a series.
-Copies exif data. Only copies photos from my phone (no whatsapp photos, screenshots etc).
-Run like this:
-python downsize_photos.py /home/sara/Dropbox/Pictures/phone/2024/10 /home/sara/repos/travel-log/data/private/photos/2024/10
-"""
 
 def process_photos(
     input_folder: str,
@@ -103,14 +95,20 @@ def process_photos(
 
     print("Processing complete!")
 
-# --- Execution ---
+
+@click.command()
+@click.argument("input_dir", type=click.Path(exists=True, file_okay=False, path_type=str))
+@click.argument("output_dir", type=click.Path(path_type=str))
+def run(input_dir: str, output_dir: str) -> None:
+    """
+    Downsize images for the web, skipping adjacent near-duplicates.
+
+    The final image from a series of near-duplicates is used. Retains EXIF data.
+
+    Only copies photos from my phone models (e.g. Pixel 6 or Pixel 10 Pro). Skips WhatsApp, screenshots, etc.
+    """
+    process_photos(input_dir, output_dir)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Downsize images for the web, skip adjacent near-duplicates, and retain EXIF data."
-    )
-
-    parser.add_argument("input_dir", help="Path to the folder containing the original images.")
-    parser.add_argument("output_dir", help="Path to the folder where downsized images will be saved.")
-
-    args = parser.parse_args()
-    process_photos(args.input_dir, args.output_dir)
+    run()

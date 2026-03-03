@@ -1,11 +1,10 @@
-import argparse
 import json
 import os
-import sys
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import click
 from dotenv import load_dotenv
 from ollama import chat
 from PIL import Image
@@ -189,28 +188,33 @@ def generate_captions(image_dir: str, jsonl_path: str) -> None:
 
     print(f"\nDone! Captions saved to {jsonl_path}")
 
-if __name__ == "__main__":
+@click.command()
+@click.argument("year_month", type=str)
+def run(year_month: str) -> None:
+    """
+    Process a directory of images to generate AI captions and extract EXIF/PostGIS data.
+
+    YEAR_MONTH: Subdirectory of PRIVATE_DATA_DIR/photos, e.g. '2024/07'
+    """
+    # TODO: this script might be doing too much - AI captions plus exif data
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Process a directory of images to generate AI captions and extract EXIF/PostGIS data.")
-    parser.add_argument("year_month", type=str, help="Year and month of photos, e.g. 2024/07 or 2025/12.")
-
-    args = parser.parse_args()
-
-    image_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "photos", args.year_month)
+    image_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "photos", year_month)
     if not os.path.isdir(image_dir):
-        print(f"Error: The directory '{image_dir}' does not exist or is not a valid folder.")
-        sys.exit(1)
+        raise SystemExit(f"Error: The directory '{image_dir}' does not exist or is not a valid folder.")
 
-    # Verify that the directory has been manually "screened" for sensitive content
     if has_not_screened_marker(image_dir):
-        print(f"Error: The directory '{image_dir}' has a 'NOT_SCREENED' marker file. Skipping...")
-        sys.exit(1)
+        raise SystemExit(
+            f"Error: The directory '{image_dir}' has a 'NOT_SCREENED' marker file. Skipping..."
+        )
 
-    # Build paths from input year/month string
     output_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
     os.makedirs(output_dir, exist_ok=True)
     current_date = datetime.now().strftime("%Y-%m-%d")
-    output_filename = f"captions_{args.year_month.replace('/', '-')}_{current_date}.jsonl"
+    output_filename = f"captions_{year_month.replace('/', '-')}_{current_date}.jsonl"
     jsonl_path = os.path.join(output_dir, output_filename)
     generate_captions(image_dir, jsonl_path)
+
+
+if __name__ == "__main__":
+    run()
