@@ -1,17 +1,10 @@
-import argparse
 import csv
 import json
 import os
 import shutil
-import sys
 
+import click
 from dotenv import load_dotenv
-
-
-"""
-Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
-Loads observation counts from global inaturalist taxon data to include in the geojson.
-"""
 
 def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: str) -> bool:
     """
@@ -103,37 +96,50 @@ def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: 
     print(f"Successfully wrote {len(features)} points to {output_geojson}")
     return True
 
-if __name__ == "__main__":
+
+@click.command()
+@click.argument("input_csv", type=click.Path(exists=True, path_type=str))
+@click.option(
+    "--deploy-path",
+    type=click.Path(path_type=str),
+    default=None,
+    help="Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass \"\" to disable.",
+)
+def run(input_csv: str, deploy_path: str | None) -> None:
+    """
+    Convert iNaturalist CSV export to a GeoJSON FeatureCollection for map view.
+
+    Uses taxon data from PUBLIC_DATA_DIR for global observation counts.
+    Output is written to FINAL_DATA_DIR/inaturalist.geojson.
+
+    INPUT_CSV: Path to the input CSV file.
+    """
     load_dotenv()
 
-    OUTPUT_FILE = os.path.join(os.getenv("FINAL_DATA_DIR"), "inaturalist.geojson")
-    TAXON_JSON_FILE = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
-    DEFAULT_DEPLOY_PATH = os.path.join(os.getenv("DEPLOY_TARGET"), "observations")
+    output_file = os.path.join(os.getenv("FINAL_DATA_DIR"), "inaturalist.geojson")
+    taxa_json_file = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
+    default_deploy_path = os.path.join(os.getenv("DEPLOY_TARGET"), "observations")
 
-    parser = argparse.ArgumentParser(description="Convert raw inaturalist observations to a geojson file for map view.")
-    parser.add_argument("input_csv", help="Path to the input CSV file")
-    parser.add_argument("--deploy-path",
-                        help=f"Folder to copy the output file to for deployment. Default: {DEFAULT_DEPLOY_PATH}. Pass an empty string \"\" to disable.",
-                        default=DEFAULT_DEPLOY_PATH)
-    args = parser.parse_args()
+    if deploy_path is None:
+        deploy_path = default_deploy_path
+    elif deploy_path == "":
+        deploy_path = None
 
-    if args.deploy_path:
-        if not os.path.exists(args.deploy_path):
-            print(f"\n[ERROR] Deploy path not found: {args.deploy_path}")
-            sys.exit(1)
+    if deploy_path and not os.path.exists(deploy_path):
+        raise SystemExit(f"[ERROR] Deploy path not found: {deploy_path}")
 
-    if not os.path.exists(args.input_csv):
-        print(f"Error: Could not find input file '{args.input_csv}'")
-        os.exit(1)
+    if not os.path.exists(input_csv):
+        raise SystemExit(f"Error: Could not find input file '{input_csv}'")
 
-    success = convert_inat_csv_to_geojson(args.input_csv, OUTPUT_FILE, TAXON_JSON_FILE)
+    success = convert_inat_csv_to_geojson(input_csv, output_file, taxa_json_file)
 
-    # Deploy generated file, if deploy path provided
-    # Copied directly from obfuscate_points.py
-    if success and args.deploy_path:
-        deploy_file = f"{args.deploy_path}"
+    if success and deploy_path:
         try:
-            shutil.copy(OUTPUT_FILE, deploy_file)
-            print(f"  [SUCCESS] Copied {OUTPUT_FILE} -> {deploy_file}")
+            shutil.copy(output_file, deploy_path)
+            print(f"  [SUCCESS] Copied {output_file} -> {deploy_path}")
         except Exception as e:
-            print(f"  [ERROR] Copy failed: {e}")
+            raise SystemExit(f"  [ERROR] Copy failed: {e}")
+
+
+if __name__ == "__main__":
+    run()
