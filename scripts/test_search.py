@@ -13,7 +13,9 @@ DB_CONFIG = os.getenv("DATABASE_CONFIG")
 # Load the SAME model you used for populating
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
-def search_waypoints(query_text):
+def search_waypoints(query_text: str) -> None:
+    conn = None
+    cur = None
     try:
         conn = psycopg2.connect(DB_CONFIG)
         cur = conn.cursor()
@@ -29,7 +31,6 @@ def search_waypoints(query_text):
             ORDER BY distance ASC
             LIMIT 3;
         """
-        
         cur.execute(sql, (query_embedding,))
         results = cur.fetchall()
 
@@ -46,12 +47,16 @@ def search_waypoints(query_text):
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        cur.close()
-        conn.close()
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
-def search_photos(query_text):
+def search_photos(query_text: str) -> None:
     """Semantic search over photo captions using the same 384-dim embedding model."""
+    conn = None
+    cur = None
     try:
         conn = psycopg2.connect(DB_CONFIG)
         cur = conn.cursor()
@@ -85,8 +90,10 @@ def search_photos(query_text):
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        cur.close()
-        conn.close()
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
 if __name__ == "__main__":

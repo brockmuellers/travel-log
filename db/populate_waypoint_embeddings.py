@@ -22,20 +22,20 @@ INPUT_DIR = os.path.join(os.getenv("INTERIM_DATA_DIR"), "robinblog")
 print("Loading model (this may take a moment first time)...")
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
-def strip_nul(s):
+def strip_nul(s: str | None) -> str | None:
     """Remove NUL (0x00) characters. PostgreSQL and some libs reject them."""
     if s is None:
         return s
     return s.replace("\x00", "")
 
 
-def get_embedding(text):
+def get_embedding(text: str) -> list[float]:
     """Generates a 384-dim embedding locally."""
     # sentence-transformers handles newlines fine, but cleaning is good practice
     text = text.replace("\n", " ")
     return model.encode(text).tolist()
 
-def populate_embeddings(json_file_path):
+def populate_embeddings(json_file_path: str | Path) -> None:
     try:
         conn = psycopg2.connect(DB_CONFIG)
         cur = conn.cursor()

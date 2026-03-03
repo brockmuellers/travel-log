@@ -42,7 +42,7 @@ special_matches = {
 }
 # ---------------------
 
-def filter_gbif_robust():
+def filter_gbif_robust() -> None:
     print(f"Reading targets from {inat_file}...")
 
     try:

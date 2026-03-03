@@ -13,7 +13,7 @@ input_csv =  os.path.join(os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observati
 output_json = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
 # ---------------------
 
-def get_inaturalist_counts():
+def get_inaturalist_counts() -> None:
     print(f"Reading observations from {input_csv}...")
 
     try:

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "db"))
 import populate_waypoint_embeddings  # noqa: E402
 
 
-def test_embedding_dimension_is_384():
+def test_embedding_dimension_is_384() -> None:
     """Server and DB expect 384-dim vectors; this catches model/script changes."""
     embedding = populate_waypoint_embeddings.get_embedding("test query")
     assert len(embedding) == 384, (

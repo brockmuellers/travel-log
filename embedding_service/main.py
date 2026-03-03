@@ -6,6 +6,7 @@ semantic search.
 import json
 import os
 import sys
+from typing import Any
 
 from sentence_transformers import SentenceTransformer
 
@@ -43,14 +44,14 @@ def handle_embed(body: bytes) -> tuple[int, dict]:
     return 200, {"embedding": embedding}
 
 
-def main():
+def main() -> None:
     port = int(os.environ.get("EMBEDDING_SERVICE_PORT", "5001"))
     host = os.environ.get("EMBEDDING_SERVICE_HOST", "127.0.0.1")
 
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             if self.path.rstrip("/") == "/health":
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -60,7 +61,7 @@ def main():
             self.send_response(404)
             self.end_headers()
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             if self.path.rstrip("/") != "/embed":
                 self.send_response(404)
                 self.end_headers()
@@ -76,7 +77,7 @@ def main():
             self.end_headers()
             self.wfile.write(json.dumps(resp).encode("utf-8"))
 
-        def log_message(self, format, *args):
+        def log_message(self, format: str, *args: Any) -> None:
             print(args[0], file=sys.stderr)
 
     server = HTTPServer((host, port), Handler)

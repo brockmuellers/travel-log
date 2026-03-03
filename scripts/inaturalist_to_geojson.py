@@ -13,7 +13,7 @@ Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
 Loads observation counts from global inaturalist taxon data to include in the geojson.
 """
 
-def convert_inat_csv_to_geojson(input_csv, output_geojson, taxa_json):
+def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: str) -> bool:
     """
     Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
 
