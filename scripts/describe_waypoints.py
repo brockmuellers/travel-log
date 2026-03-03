@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+from typing import Any
 
 from dotenv import load_dotenv
 from google import genai
@@ -64,7 +65,10 @@ class Waypoint(BaseModel):
     time: str
     description: str
 
-def validate_waypoints(input_data, output_data):
+def validate_waypoints(
+    input_data: list[dict[str, Any]] | str,
+    output_data: list[dict[str, Any]] | str,
+) -> tuple[bool, list[str]]:
     """
     Validates that output_data matches input_data exactly, 
     except for the 'description' field which must be populated.
@@ -116,7 +120,7 @@ def validate_waypoints(input_data, output_data):
 
     return valid, errors
 
-def describe_waypoints(waypoints_file, pdf_file, output_file, verbose):
+def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, verbose: bool) -> None:
 
     # # 1. Setup API
     client = genai.Client()

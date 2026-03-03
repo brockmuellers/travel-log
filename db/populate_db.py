@@ -6,8 +6,10 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import psycopg2
+import psycopg2.extensions
 import srtm
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
@@ -28,7 +30,7 @@ PHOTO_FILENAME_TIMESTAMP_FMT = "%Y-%m-%d %H.%M.%S"
 NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
 
 
-def _timestamp_str_from_filename(filename):
+def _timestamp_str_from_filename(filename: str | None) -> str | None:
     """
     Extract local timestamp from a filename like "2024-08-04 17.02.35.jpg".
     Returns a string in PHOTO_TIMESTAMP_FMT for use with _parse_photo_time, or None.
@@ -43,7 +45,9 @@ def _timestamp_str_from_filename(filename):
         return None
 
 
-def _parse_photo_time(local_ts_str, lat, lon):
+def _parse_photo_time(
+    local_ts_str: str | None, lat: float | None, lon: float | None
+) -> tuple[datetime | None, datetime | None, str | None]:
     """
     Parse EXIF-style local timestamp and resolve timezone at (lat, lon).
 
@@ -71,12 +75,12 @@ def _parse_photo_time(local_ts_str, lat, lon):
     return (utc_dt, dt_naive, tz_name)
 
 
-def _local_to_utc(local_ts_str, lat, lon):
+def _local_to_utc(local_ts_str: str | None, lat: float | None, lon: float | None) -> datetime | None:
     """Return UTC timezone-aware datetime for the photo timestamp, or None."""
     utc_dt, _, _ = _parse_photo_time(local_ts_str, lat, lon)
     return utc_dt
 
-def connect_to_database(db_params):
+def connect_to_database(db_params: dict[str, Any]) -> psycopg2.extensions.connection | None:
     """ Connect to the PostgreSQL database server and return a connection object. """
     conn = None
     try:
@@ -90,11 +94,11 @@ def connect_to_database(db_params):
             conn.close()
         return None
 
-def get_text(elem, tag):
+def get_text(elem: ET.Element, tag: str) -> str | None:
     item = elem.find(tag, NS)
     return item.text if item is not None else None
 
-def run_findpenguins_gpx_etl(conn, file_path):
+def run_findpenguins_gpx_etl(conn: psycopg2.extensions.connection, file_path: str | Path) -> None:
     """ Import data from FindPenguins GPX file given its path and a DB connection object """
     tree = ET.parse(file_path)
     root = tree.getroot()
@@ -235,7 +239,7 @@ def run_findpenguins_gpx_etl(conn, file_path):
     conn.commit()
 
 
-def run_photos_etl(conn, photos_dir):
+def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path) -> None:
     """
     Populate the photos table from JSONL files in photos_dir.
     Each line is a JSON object with filename, caption, timestamp, and location.
@@ -259,7 +263,7 @@ def run_photos_etl(conn, photos_dir):
     cur.execute("SELECT id, start_time, end_time FROM waypoints ORDER BY start_time NULLS LAST")
     waypoint_windows = cur.fetchall()  # list of (id, start_time, end_time)
 
-    def waypoint_id_for_time(t):
+    def waypoint_id_for_time(t: datetime | None) -> int | None:
         if t is None:
             return None
         for i, (wp_id, start, end) in enumerate(waypoint_windows):

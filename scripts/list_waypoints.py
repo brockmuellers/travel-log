@@ -12,7 +12,7 @@ For ingestion by LLM.
 Current usage: follow up running this script by manually splitting the trip-level
 file into country-level files (e.g. southeast-asia_waypoints_02-cambodia.json)
 """
-def extract_waypoints_from_gpx(input_file, output_file):
+def extract_waypoints_from_gpx(input_file: str | Path, output_file: str | Path) -> None:
     # Parse the GPX file
     tree = ET.parse(input_file)
     root = tree.getroot()

@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from ollama import chat
@@ -19,9 +20,9 @@ def has_not_screened_marker(directory: str) -> bool:
     marker_path = os.path.join(directory, "NOT_SCREENED")
     return os.path.isfile(marker_path)
 
-def get_image_metadata(file_path):
+def get_image_metadata(file_path: str) -> Dict[str, Any]:
     """Extracts camera model, timestamp, and rich GPS coordinates from an image."""
-    metadata = {
+    metadata: Dict[str, Any] = {
         'model': None,
         'timestamp': None,
         'location': None,
@@ -42,7 +43,7 @@ def get_image_metadata(file_path):
                 gps_ifd = exif.get_ifd(34853)
                 if gps_ifd:
                     # Helper to safely convert EXIF fractions (rationals) to floats
-                    def parse_rational(val):
+                    def parse_rational(val: Any) -> Optional[float]:
                         if val is None: return None
                         try:
                             return float(val)
@@ -109,9 +110,9 @@ def get_image_metadata(file_path):
 
     return metadata
 
-def generate_captions(image_dir, jsonl_path):
+def generate_captions(image_dir: str, jsonl_path: str) -> None:
     # Load existing progress if the file already exists
-    processed_files = set()
+    processed_files: set[str] = set()
 
     # 1. Load existing progress by reading line-by-line
     if os.path.exists(jsonl_path):

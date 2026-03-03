@@ -12,7 +12,12 @@ Run like this:
 python downsize_photos.py /home/sara/Dropbox/Pictures/phone/2024/10 /home/sara/repos/travel-log/data/private/photos/2024/10
 """
 
-def process_photos(input_folder, output_folder, max_size=(1920, 1920), hash_cutoff=18):
+def process_photos(
+    input_folder: str,
+    output_folder: str,
+    max_size: tuple[int, int] = (1920, 1920),
+    hash_cutoff: int = 18,
+) -> None:
     """
     Downsizes images and skips adjacent duplicates, keeping the last in a series.
     Copies EXIF data to the new images.
@@ -31,7 +36,7 @@ def process_photos(input_folder, output_folder, max_size=(1920, 1920), hash_cuto
     current_group = []
     prev_hash = None
 
-    def save_last_of_group(group):
+    def save_last_of_group(group: list[str]) -> None:
         """Processes and saves the very last image of the duplicate group."""
         if not group:
             return

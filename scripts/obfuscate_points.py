@@ -7,6 +7,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -38,14 +39,14 @@ DEFAULT_OUTPUT_PATH = os.getenv("FINAL_DATA_DIR")
 # Round new lat/lon values, to make obfuscation less obvious
 ROUND_TO = 6
 
-def normalize_longitude(lon):
+def normalize_longitude(lon: float) -> float:
     """
     Wraps longitude to -180 to 180 degrees.
     Ex: 181.0 -> -179.0
     """
     return (lon + 180) % 360 - 180
 
-def haversine_distance(lat1, lon1, lat2, lon2):
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
     Calculate the great circle distance between two points
     on the earth (specified in decimal degrees) in kilometers.
@@ -62,7 +63,7 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 
     return R * c
 
-def calculate_destination_point(lat, lon, distance_km, bearing_degrees):
+def calculate_destination_point(lat: float, lon: float, distance_km: float, bearing_degrees: float) -> tuple[float, float]:
     """
     Calculates a new coordinate given a start point, distance (km), and bearing (degrees).
     """
@@ -84,7 +85,7 @@ def calculate_destination_point(lat, lon, distance_km, bearing_degrees):
     # Round the final values so it's less obvious that obfuscation was done
     return round(final_lat, ROUND_TO), round(final_lon, ROUND_TO)
 
-def process_gpx(input_file, output_file, sensitive_config):
+def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_config: dict[str, Any]) -> bool:
     print(f"Reading GPX: {input_file}")
     tree = ET.parse(input_file)
     root = tree.getroot()
