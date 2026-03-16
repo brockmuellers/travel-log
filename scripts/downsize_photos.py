@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 
 import click
 import imagehash
 from PIL import Image
+
 
 def process_photos(
     input_folder: str,
@@ -93,6 +95,7 @@ def process_photos(
     if current_group:
         save_last_of_group(current_group)
 
+    (Path(output_folder) / "NOT_SCREENED").touch()
     print("Processing complete!")
 
 
