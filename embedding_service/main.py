@@ -10,7 +10,7 @@ from typing import Any
 
 from sentence_transformers import SentenceTransformer
 
-# Same model as db/populate_waypoint_embeddings.py and scripts/test_search.py
+# Same model as db/populate_embeddings.py and scripts/test_search.py
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 # Load model once at startup (can take a few seconds on first run)

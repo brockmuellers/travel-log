@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
+from dateutil import parser
 
 # Initialize elevation data (files will be cached in a local directory)
 elevation_data = srtm.get_data()
@@ -28,6 +29,13 @@ PHOTO_TIMESTAMP_FMT = "%Y:%m:%d %H:%M:%S"
 PHOTO_FILENAME_TIMESTAMP_FMT = "%Y-%m-%d %H.%M.%S"
 
 NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+
+
+def _strip_nul(s: str | None) -> str | None:
+    """Remove NUL (0x00) characters. PostgreSQL and some libs reject them."""
+    if s is None:
+        return s
+    return s.replace("\x00", "")
 
 
 def _timestamp_str_from_filename(filename: str | None) -> str | None:
@@ -97,6 +105,92 @@ def connect_to_database(db_params: dict[str, Any]) -> psycopg2.extensions.connec
 def get_text(elem: ET.Element, tag: str) -> str | None:
     item = elem.find(tag, NS)
     return item.text if item is not None else None
+
+
+def run_find_penguins_description_etl(
+    conn: psycopg2.extensions.connection, json_file_path: str | Path
+) -> None:
+    """
+    Populate waypoint descriptions (and related text-only fields) from a JSON file.
+    - matches waypoints by (name, start_time)
+    - skips entries with missing time (e.g. "_general_" waypoint)
+
+    TODO: handle "_general_" waypoint description
+    """
+    json_file_path = Path(json_file_path)
+
+    try:
+        with open(json_file_path, "r") as f:
+            waypoints_data = json.load(f)
+    except FileNotFoundError:
+        print(f"CRITICAL: JSON file not found at {json_file_path}")
+        return
+
+    print(f"Processing {len(waypoints_data)} waypoints from {json_file_path}...")
+
+    cur = conn.cursor()
+
+    try:
+        for entry in waypoints_data:
+            name = _strip_nul(entry.get("name"))
+            raw_start_time = _strip_nul(entry.get("time"))
+            description = _strip_nul(entry.get("description"))
+
+            if not description:
+                print(f"Skipping '{name}': No description text found.")
+                continue
+
+            if description.strip().strip(".").lower() == "no mention":
+                # Specifically directed LLM to use this string when it couldn't find info
+                # on a particular waypoint. Not the most robust. Consider using blank instead.
+                print(f"Skipping '{name}': Description was 'No mention.'")
+                continue
+
+            if not raw_start_time:
+                # Note that this may happen for the "_general_" waypoint
+                print(f"Skipping '{name}': No time (or empty time) found.")
+                continue
+
+            try:
+                start_time_dt = parser.parse(raw_start_time)
+            except (ValueError, TypeError):
+                raise ValueError(f"CRITICAL ERROR: Invalid timestamp for '{name}'")
+
+            check_query = """
+                SELECT id FROM waypoints
+                WHERE name = %s AND start_time = %s;
+            """
+            cur.execute(check_query, (name, start_time_dt))
+            result = cur.fetchone()
+
+            if result is None:
+                error_msg = (
+                    f"\n{'!'*50}\n"
+                    f"DATA MISMATCH ERROR:\n"
+                    f"Waypoint '{name}' ({raw_start_time})\n"
+                    f"found in JSON but NOT in DB.\n"
+                    f"{'!'*50}\n"
+                )
+                raise LookupError(error_msg)
+
+            waypoint_id = result[0]
+
+            update_query = """
+                UPDATE waypoints
+                SET description = %s
+                WHERE id = %s;
+            """
+            cur.execute(update_query, (description, waypoint_id))
+
+        conn.commit()
+        print("\nSUCCESS: All waypoint descriptions populated and committed.")
+
+    except Exception:
+        conn.rollback()
+        print("\nTRANSACTION ROLLED BACK.")
+        raise
+    finally:
+        cur.close()
 
 def run_findpenguins_gpx_etl(conn: psycopg2.extensions.connection, file_path: str | Path) -> None:
     """ Import data from FindPenguins GPX file given its path and a DB connection object """
