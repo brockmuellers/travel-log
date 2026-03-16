@@ -1,5 +1,5 @@
 # Declare phony targets (targets that aren't actual files)
-.PHONY: help install-deps run-server run-embedding reload-db deploy-db test-python test-go test
+.PHONY: help install-deps run-server run-embedding start-db reload-db deploy-db test-python test-go test
 
 # Set shell to bash so I can use bash syntax
 SHELL := /bin/bash
@@ -10,6 +10,7 @@ help:
 	@echo "  make install-deps   - Install Go and Python dependencies"
 	@echo "  make run-server     - Run the Go server"
 	@echo "  make run-embedding  - Run the Python embedding service"
+	@echo "  make start-db       - Start up the Docker database container"
 	@echo "  make reload-db      - Drop database and run the database population scripts"
 	@echo "  make deploy-db      - Copy local database data to remote postgres instance"
 	@echo "  make test-python    - Run all Python tests (db, embedding_service, scripts)"
@@ -30,6 +31,10 @@ run-server:
 run-embedding:
 	@echo "Starting Embedding Service..."
 	python embedding_service/main.py
+
+start-db:
+	@echo "Starting Docker database..."
+	docker compose up
 
 reload-db:
 	@echo "Dropping database and running DB population scripts..."
