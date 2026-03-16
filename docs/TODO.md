@@ -6,7 +6,6 @@
 	* Scrape data that includes travel mode
 	* Get travel mode into GPX
 	* Color map lines
-* Generate photo descriptions
 
 **Medium:**
 * Explore different embeddings
@@ -19,6 +18,7 @@
 * Map legend
 * Filter waypoint search by selected "trip" tab
 * Link waypoint search results to points on map
+* Waypoint locations are not obfuscated; only relevant to a couple of them but still not ideal
 
 ### Internal
 
@@ -39,9 +39,6 @@
 * Fix Vietnamese waypoint name with special characters (and find any others?)
 
 ### Documentation
-
-**High:**
-* Add photo processing flow to excalidraw
 
 **Medium:**
 * Improve excalidraw (maybe interim files in same column as source files) and export to image

@@ -32,7 +32,7 @@ The codebase is in an early but functional phase: the database schema and ETL po
 
 - **GPX → DB:** `db/populate_db.py` parses FindPenguins GPX (waypoints + track points grouped by timestamp), inserts one trip per file, waypoints with start/end times and location, tracks as LINESTRINGs between waypoints, and track_points with optional SRTM elevation. Uses `psycopg2` and env for DB connection.
 - **Waypoint descriptions:** `scripts/describe_waypoints.py` uses Gemini (e.g. `gemini-3-flash-preview`) to generate first-person descriptions per waypoint from the travel blog (PDF/post content). Output is JSON (waypoint name, date, description); data is written to `INTERIM_DATA_DIR` (e.g. `robinblog`).
-- **Waypoint embeddings:** `db/populate_waypoint_embeddings.py` reads the blog-derived JSON, computes 384-dim vectors with **BAAI/bge-small-en-v1.5** (SentenceTransformers), and updates `waypoints.description` and `waypoints.embedding` in Postgres. Same model is used for semantic search so dimensions must stay 384 (enforced by `tests/test_embedding_dimension.py`).
+- **Waypoint embeddings:** `db/populate_embeddings.py` computes 384-dim vectors with **BAAI/bge-small-en-v1.5** (SentenceTransformers) from `waypoints.description` and updates `waypoints.embedding` in Postgres. Same model is used for semantic search so dimensions must stay 384 (enforced by `tests/test_embedding_dimension.py`).
 - **Other scripts:** e.g. `scripts/list_waypoints.py`, `scripts/test_search.py`, `scripts/obfuscate_points.py`, `scripts/load_inaturalist_counts.py`, `scripts/describe_photos.py` (photo descriptions are on the roadmap). `db/reload-db.sh` wipes and reinitializes the DB and can repopulate (including embeddings).
 
 ### Embedding service (local dev)

@@ -111,3 +111,9 @@ Speed tests on moondream2 aren't great but I could make it work. Performance is 
 - `ahmadwaqar/smolvlm2-2.2b-instruct:latest` is a step better than moondream, maybe 80% accuracy, and only takes 15-30 seconds per photo. Fairly flowery and not the best at following instructions - I only want the caption. `Caption: "A person wearing a vibrant red jacket is in the midst of taking a bite from a sandwich while seated comfortably inside a vehicle with blue seats." This image captures an intimate moment of someone enjoying their meal during travel, surrounded by the hustle and bustle of daily life on the go. The use of vivid colors in the description adds depth to the scene, making it more visually appealing and engaging for the viewer.`
 
 I thought about reviewing the descriptions to identify potentially sensitive content, but in the end, it was more reliable and more fun to just breeze through the photos and delete sensitive ones.
+
+2026-03-16
+
+Other than a few code improvements and tests, I've had a long break (working on another project + personal obligations). I'm focusing on documentation today.
+
+Thinking ahead to the future of this project - I started out this project not really knowing how LLMs would fit into it, but wanting to explore the space. Now that I understand their abilities and usage a little more, I think my ideal goal would be an agent that orchestrates tool calls, routing queries to the appropriate endpoints in my API and generating an answer from the responses. Exposing this to the public seems risky - I think I'd want a hardcoded password instead, as the easiest option. A more complex solution would be enforcing strict character limits in the chat box, forcing the LLM to do tool calls only to mitigate prompt injection, standard API request validation to avoid DDOS, and a captcha.

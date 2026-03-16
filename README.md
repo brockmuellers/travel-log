@@ -27,17 +27,17 @@ Secondary sources:
 
 ### Data and ETL
 
-My primary data sources are stored in a `data` directory (gitignored). Sensitive data is stored separately to avoid accidentally exposing un-obfuscated information. I use a number of python scripts to process that data into a display-ready format. A rough representation of the flow is found in `docs`.
+My primary data sources are stored in a `data` directory (gitignored). Sensitive data is stored separately to avoid accidentally exposing un-obfuscated information. I use a number of python scripts to process that data into a display-ready format. A rough diagram of the flow is found in `docs`, or [can be viewed in Excalidraw](https://excalidraw.com/#json=lA_GlfdHmcbOQ3IxK3GLw,hqk1cdvBYapBOC8g9MpFrw).
 
 ### Database
 
-A Postgres database stores data for use by the server. Local DB starts with `docker compose up -d`.
+A Postgres database stores data for use by the server. Local DB starts with `docker compose up -d`. Production runs on Neon.
 
 The database is populated by scripts in `db`, which read from the `data` directory.
 
 ### Go Server
 
-A minimal Go server exposes queries against Postgres, for use by the frontend. Requires a running postgres instance and embedding service.
+A minimal Go server exposes queries against Postgres, for use by the frontend. Locally, requires a running postgres instance and embedding service. Production is on Render.
 
 Note to self: don't forget to `go mod tidy` or `make install-deps` before pushing if updating `go.mod`!
 
