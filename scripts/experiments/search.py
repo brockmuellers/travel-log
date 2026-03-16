@@ -1,4 +1,6 @@
 import os
+import subprocess
+from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
@@ -9,6 +11,7 @@ from sentence_transformers import SentenceTransformer
 # --- Config ---
 load_dotenv()
 DB_CONFIG = os.getenv("DATABASE_CONFIG")
+PHOTOS_BASE_DIR = Path(os.getenv("PRIVATE_DATA_DIR")) / "photos"
 
 # Load the SAME model you used for populating
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')
@@ -76,6 +79,7 @@ def search_photos(query_text: str) -> None:
 
         print(f"\nPhoto search results for: '{query_text}'")
         print("-" * 40)
+        photo_paths = []
         for row in results:
             filename, caption, dist, waypoint_name = row
             score = (1 - dist) * 100
@@ -86,6 +90,23 @@ def search_photos(query_text: str) -> None:
             print(f"[{score:.1f}% Match] {filename} — {waypoint_label}")
             print(f"   Caption: {caption_preview}")
             print()
+
+            # display the photos too; don't have subdirectory offhand but can rglob search for filename
+            matches = list(PHOTOS_BASE_DIR.rglob(filename))
+            if matches:
+                full_path = str(matches[0])
+            #     subprocess.Popen(['xdg-open', full_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                print(f"   (File {filename} not found in {PHOTOS_BASE_DIR})")
+
+            if os.path.exists(full_path):
+                photo_paths.append(full_path)
+
+        # If we found valid images, open them all in ONE window using Ubuntu's default viewer
+        if photo_paths:
+            # eog is the standard Ubuntu image viewer command
+            subprocess.Popen(['eog'] + photo_paths, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
     except Exception as e:
         print(f"Error: {e}")
@@ -102,6 +123,6 @@ if __name__ == "__main__":
     search_waypoints("relaxing beaches with clear water")
     search_waypoints("busy city streets and markets")
 
-    search_photos("ancient temples and history")
-    search_photos("person smiling with camera")
+    search_photos("museums and history")
+    search_photos("crowds and busy streets")
     search_photos("food and restaurants")
