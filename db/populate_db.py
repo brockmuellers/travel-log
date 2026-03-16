@@ -11,11 +11,11 @@ from typing import Any
 import psycopg2
 import psycopg2.extensions
 import srtm
+from dateutil import parser
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
-from dateutil import parser
 
 # Initialize elevation data (files will be cached in a local directory)
 elevation_data = srtm.get_data()
@@ -406,7 +406,6 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
                     ts_str, lat, lon
                 )
                 waypoint_id = waypoint_id_for_time(time_taken)
-                # TODO: set embedding from caption (e.g. via embedding service)
                 rows.append((
                     waypoint_id,
                     filename,
@@ -444,12 +443,7 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
 
 if __name__ == "__main__":
     load_dotenv()
-    # NOTE: USING RAW UN-OBFUSCATED GPX FILES FOR NOW
-    gpx_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"),"findpenguins")
 
-    waypoint_files_list = list(Path(gpx_dir).glob("*.gpx"))
-
-    print(f"Importing {len(waypoint_files_list)} files")
 
     # TODO remove this debug line
     #waypoint_files_list = waypoint_files_list[0:1]
@@ -465,6 +459,12 @@ if __name__ == "__main__":
     if connection is None:
         sys.exit(1)
 
+    # Populate waypoints from GPX
+    # NOTE: USING RAW UN-OBFUSCATED GPX FILES FOR NOW
+    gpx_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"),"findpenguins")
+    waypoint_files_list = list(Path(gpx_dir).glob("*.gpx"))
+
+    print(f"Importing {len(waypoint_files_list)} files")
     for f in waypoint_files_list:
         print(f"Processing {f}...")
         try:
@@ -475,6 +475,23 @@ if __name__ == "__main__":
             print("Failed to process")
             raise
 
+    # Populate waypoint descriptions
+    # If there are multiple files for the same trip, with different models,
+    # we just process them in alphabetical order.
+    # Do I want more consistency? gemini3pro comes after gemini3fp
+    waypoint_description_path = os.path.join(os.getenv("INTERIM_DATA_DIR"), "robinblog")
+    waypoint_description_files = sorted(Path(waypoint_description_path).glob("*.json"))
+    print(f"Populating waypoint descriptions from {waypoint_description_path}...")
+    for f in waypoint_description_files:
+        try:
+            run_find_penguins_description_etl(connection, f)
+            print("Success!")
+        except Exception:
+            connection.close()
+            print("Failed to process")
+            raise
+
+    # Populate photos with descriptions
     photos_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "photos")
     print(f"Populating photos from {photos_dir}...")
     try:
