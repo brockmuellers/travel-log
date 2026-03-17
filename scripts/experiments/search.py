@@ -84,11 +84,11 @@ def search_photos(query_text: str) -> None:
             filename, caption, dist, waypoint_name = row
             score = (1 - dist) * 100
             waypoint_label = waypoint_name if waypoint_name else "(no waypoint)"
-            caption_preview = (caption or "")[:100]
-            if caption and len(caption) > 100:
-                caption_preview += "..."
+            # caption_preview = (caption or "")[:100]
+            # if caption and len(caption) > 100:
+            #     caption_preview += "..."
             print(f"[{score:.1f}% Match] {filename} — {waypoint_label}")
-            print(f"   Caption: {caption_preview}")
+            print(f"   Caption: {caption}")
             print()
 
             # display the photos too; don't have subdirectory offhand but can rglob search for filename
@@ -123,6 +123,6 @@ if __name__ == "__main__":
     search_waypoints("relaxing beaches with clear water")
     search_waypoints("busy city streets and markets")
 
-    search_photos("museums and history")
-    search_photos("crowds and busy streets")
-    search_photos("food and restaurants")
+    search_photos("ancient temples and history")
+    search_photos("relaxing beaches with clear water")
+    search_photos("busy city streets and markets")

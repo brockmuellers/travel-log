@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -10,9 +11,28 @@ from ollama import chat
 from PIL import Image
 
 #PROMPT = "Write a short caption for this photo."
-PROMPT = "Describe this image in a one-sentence caption."
+#PROMPT = "Describe this image in a one-sentence caption."
+PROMPT = """Describe this image using exactly two lines:
+1. A description of the main subject.
+2. A description of the background details and setting."""
 MODEL = "ahmadwaqar/smolvlm2-2.2b-instruct:latest"
 
+# Only necessary in certain prompts
+def clean_llm_caption(raw_text):
+    # 1. Split the text into individual lines
+    lines = raw_text.strip().split('\n')
+
+    cleaned_sentences = []
+    for line in lines:
+        # 2. Use regex to remove leading numbers, dots, dashes, or spaces
+        # Pattern: ^[\s\d\.\)\-]+ matches start of line, digits, dots, parens, dashes
+        clean_line = re.sub(r'^\s*[\d\.\)\-]+\s*', '', line)
+
+        if clean_line:  # Avoid adding empty lines
+            cleaned_sentences.append(clean_line.strip())
+
+    # 3. Join them back together with a single space
+    return " ".join(cleaned_sentences)
 
 def has_not_screened_marker(directory: str) -> bool:
     """Return True if a file named 'NOT_SCREENED' (no extension) exists in the given directory."""
@@ -146,30 +166,51 @@ def generate_captions(image_dir: str, jsonl_path: str) -> None:
             file_path = os.path.join(image_dir, filename)
 
             try:
-                # Pass the image and prompt to the multimodal model
-                response = chat(
-                    model=MODEL,
-                    messages=[{
-                        'role': 'user',
-                        'content': PROMPT,
-                        'images': [file_path]
-                    }],
-                    options={
-                        'num_thread': 4,
-                        'num_ctx': 1024,
-                        'temperature': 0.1,
-                        'num_predict': 120
-                    }
-                )
+
+                # Retry a couple of times if the model starts rambling.
+                MAX_RETRIES = 3
+                attempts = 0
+                content = ""
+
+                while attempts < MAX_RETRIES:
+                    # On retries, we add a "Be brief" hint to the prompt
+                    current_prompt = PROMPT if attempts == 0 else f"{PROMPT} (IMPORTANT: Be very concise!)"
+
+                    response = chat(
+                        model=MODEL,
+                        messages=[{
+                            'role': 'user',
+                            'content': current_prompt,
+                            'images': [file_path]
+                        }],
+                        options={
+                            'num_thread': 4,
+                            'num_ctx': 1024,
+                            # Increase temp on retries (0.1, 0.4, 0.7) to encourage a different result
+                            'temperature': 0.1 + (attempts * 0.3),
+                            'num_predict': 120
+                        }
+                    )
+
+                    content = response.message.content
+
+                    # Check why the model stopped
+                    if response.get('done_reason') == 'length':
+                        print(f"Attempt {attempts + 1} cut off.")
+                        attempts += 1
+                    else:
+                        break
+
+                caption = clean_llm_caption(response.message.content)
 
                 new_entry = {
                     "filename": filename,
-                    "caption": response.message.content.strip(),
+                    "caption": caption,
                     "timestamp": metadata["timestamp"],
                     "location": metadata["location"]
                 }
 
-                # 3. Write a single JSON string followed by a newline directly to the file
+                # Write a single JSON string followed by a newline directly to the file
                 f.write(json.dumps(new_entry) + '\n')
                 f.flush() # Force write to disk immediately for crash resilience
                 os.fsync(f.fileno())
