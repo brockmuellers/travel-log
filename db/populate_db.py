@@ -333,18 +333,41 @@ def run_findpenguins_gpx_etl(conn: psycopg2.extensions.connection, file_path: st
     conn.commit()
 
 
+def _latest_jsonl_photos_files(paths: list[Path]) -> list[Path]:
+    """
+    From jsonl paths like captions_2024-07_2026-02-25.jsonl, keep only the latest
+    file per content year-month (by the file date suffix). Returns a sorted list.
+    Paths not matching captions_YYYY-MM_YYYY-MM-DD.jsonl are ignored.
+    """
+    latest_per_ym: dict[str, Path] = {}
+    for path in paths:
+        stem = path.stem  # e.g. "captions_2024-07_2026-02-25"
+        parts = stem.split("_")
+        if len(parts) != 3 or parts[0] != "captions":
+            continue
+        content_ym, file_date = parts[1], parts[2]
+        if len(content_ym) != 7 or len(file_date) != 10:  # YYYY-MM, YYYY-MM-DD
+            continue
+        if content_ym not in latest_per_ym or file_date > latest_per_ym[content_ym].stem.split("_")[2]:
+            latest_per_ym[content_ym] = path
+    return sorted(latest_per_ym.values(), key=lambda p: p.name)
+
+
 def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path) -> None:
     """
     Populate the photos table from JSONL files in photos_dir.
     Each line is a JSON object with filename, caption, timestamp, and location.
+    Only the most recent file per year-month is processed (e.g. captions_2024-07_2026-02-28.jsonl
+    is used and captions_2024-07_2026-02-25.jsonl is ignored).
     """
     photos_dir = Path(photos_dir)
     if not photos_dir.is_dir():
         raise FileNotFoundError(f"Photos directory not found: {photos_dir}")
 
-    jsonl_files = list(photos_dir.glob("*.jsonl"))
+    jsonl_files = _latest_jsonl_photos_files(list(photos_dir.glob("*.jsonl")))
+    print(jsonl_files)
     if not jsonl_files:
-        print(f"No .jsonl files found in {photos_dir}")
+        print(f"No .jsonl files found in {photos_dir} (or none matching captions_YYYY-MM_YYYY-MM-DD.jsonl)")
         return
 
     # -------------------------------------------------------------------------
