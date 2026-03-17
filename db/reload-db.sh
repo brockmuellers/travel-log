@@ -9,5 +9,6 @@ docker compose down -v  && docker compose up -d --build
 # Wait for the DB to fully start
 sleep 5
 # Populate data
-python db/populate_db.py && \
+python db/populate_waypoints.py && \
+python db/populate_photos.py && \
 python db/populate_embeddings.py

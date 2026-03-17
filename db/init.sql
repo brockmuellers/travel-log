@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- storing the full trip gpx track here, just because
 CREATE TABLE IF NOT EXISTS trips (
     id SERIAL PRIMARY KEY,
-    name TEXT,
+    name TEXT UNIQUE NOT NULL,
     start_date DATE,
     end_date DATE,
     route GEOGRAPHY(MultiLineString, 4326), -- SRID 4326 is standard GPS lat/lon
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS trips (
 CREATE TABLE IF NOT EXISTS waypoints (
     id SERIAL PRIMARY KEY,
     trip_id INTEGER REFERENCES trips(id),
-    name TEXT,
+    name TEXT NOT NULL,
     description TEXT, -- populated from the blog
     start_time TIMESTAMPTZ, -- Use TIMESTAMPTZ for global travel!
     end_time TIMESTAMPTZ,
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS track_points (
 CREATE TABLE IF NOT EXISTS photos (
     id SERIAL PRIMARY KEY,
     waypoint_id INTEGER REFERENCES waypoints(id),
-    filename TEXT,
+    filename TEXT UNIQUE NOT NULL,
     caption TEXT,
     -- All of these time columns might be overkill but I'm not sure what my usage patterns will be yet
     time_taken TIMESTAMPTZ,
