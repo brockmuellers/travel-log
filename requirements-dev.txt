@@ -4,8 +4,3 @@ pytest>=7.0.0
 # Linting and formatting
 ruff>=0.4.0
 
-# For scripts/describe_photos.py CLI
-click>=8.0.0
-
-# For db/populate_db.py (photos ETL: timezone from lat/lon)
-timezonefinder>=6.0.0

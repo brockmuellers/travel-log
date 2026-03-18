@@ -21,8 +21,9 @@ install-deps:
 	@echo "Installing Go dependencies..."
 	go mod tidy
 	@echo "Installing Python dependencies..."
+	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
 	pip install -r embedding_service/requirements.txt
-	pip install -r scripts/requirements.txt
 
 run-server:
 	@echo "Starting Go server..."

@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * **Priorities:**
   * **Simplicity and developer ergonomics > Enterprise production readiness.**
   * **Architecture:** Avoid suggesting complex architectural patterns (e.g., microservices, message queues like Kafka/RabbitMQ, caching layers like Redis, or deep interface abstractions). Keep the stack strictly limited to Python, Postgres, and Go.
+* **Accuracy:** Documentation may be inconsistent or inaccurate. Ask for clarification when needed.
 
 ## Technology Stack & Conventions
 
@@ -17,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 1. Python (ETL & DB Scripts)
 * **Version:** Python 3.10.12
-* **Environment:** We use `pip` for dependency management. Requirements are in `requirements.txt` and `requirements-dev.txt`.
+* **Environment:** We use `pip` for dependency management. Requirements are in `requirements.txt` and `requirements-dev.txt`. Requirements for the embedding_service are in `embedding_service/requirements.txt`.
 * **Style Guidelines:**
   * Follow PEP 8.
   * Use Type Hints (`typing`) for all function signatures.
@@ -60,7 +61,7 @@ Run a single Python test:
 PYTHONPATH=. pytest db/tests/test_embedding_dimension.py
 ```
 
-Python dependencies are split: `embedding_service/requirements.txt` (sentence-transformers), `requirements-dev.txt` (pytest, click, timezonefinder). Scripts have their own deps listed per-file.
+Python dependencies are split: `requirements.txt` (all runtime deps for db/ and scripts/), `requirements-dev.txt` (pytest, ruff), `embedding_service/requirements.txt` (sentence-transformers for the embedding service).
 
 ## Architecture
 

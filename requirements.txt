@@ -1,0 +1,18 @@
+# Database & ETL (db/)
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+python-dateutil>=2.8.0
+srtm.py>=0.3.6
+timezonefinder>=6.0.0
+sentence-transformers>=2.2.0
+
+# Scripts (scripts/)
+click>=8.0.0
+Pillow>=10.0.0
+ollama>=0.1.0
+google-genai>=1.0.0
+pydantic>=2.0.0
+imagehash>=4.3.0
+pandas>=2.0.0
+requests>=2.31.0
+geopy>=2.4.0
