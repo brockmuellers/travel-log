@@ -2,6 +2,8 @@
 
 Small HTTP service that encodes text to 384-dim vectors using `BAAI/bge-small-en-v1.5` (same model as waypoint embeddings). The Go server calls it for semantic search.
 
+In production, the Go server calls the Hugging Face API instead. This service exists for local development: it runs the same model locally, avoiding API costs, since the Go server can't run Python-based embedding models directly.
+
 ## Endpoints
 
 - **POST /embed** — Body: `{"text": "your query"}` → `{"embedding": [0.1, -0.2, ...]}`

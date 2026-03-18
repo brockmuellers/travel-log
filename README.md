@@ -18,7 +18,7 @@ Primary data sources:
 * Patchy travel notes
 
 Secondary sources:
-* My husband's travel blog, with one post per country - might be useful to provide context for an LLM
+* My spouse's travel blog, with one post per country - might be useful to provide context for an LLM
 * Google location history - this is not super accurate (there are major gaps and drift)
 * Data from public sources: global eBird and iNaturalist observations, other biodiversity data sources, weather + sunrise/sunset + AQI, altitude, OpenStreetMap "Points of Interest", major events (GDELT Project?), holidays, government travel advisories, opinionated travel content from Wikivoyage, Alltrails, WWF ecoregions
 * Data from non-public sources (can't share it, but it would be interesting to view in a local implementation): Strava/Gaia heatmaps, Lonely Planet & Rough Guide guidebooks
@@ -45,7 +45,7 @@ Note to self: don't forget to `go mod tidy` or `make install-deps` before pushin
 
 The Go server can run semantic search over waypoints using a small local Python embedding service (same model as waypoint embeddings: `BAAI/bge-small-en-v1.5`).
 
-Production semantic search is handled by the Huggingfaces API.
+Production semantic search is handled by the Hugging Face API.
 
 **Testing**
 
