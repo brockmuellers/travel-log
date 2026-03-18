@@ -133,3 +133,7 @@ Please respect the following separation of concerns:
 * `/scripts/` - Data preparation scripts (photo captioning, waypoint description generation, coordinate obfuscation, etc.).
 * `/cmd/server` - Golang backend server code.
 * `/docs/` - Any documentation.
+
+## Ignored Files
+* `docs/devlog.md` — Personal dev log. Do not read, modify, or commit this file.
+* `docs/initial_plan.md` — Outdated project spec. Do not read, modify, or commit this file.
