@@ -84,6 +84,7 @@ func TestIntegration_WaypointsSearch(t *testing.T) {
 		SiteToken:           "test-token",
 	})
 
+	// Default mode (combined) — should return 200 with the full response shape.
 	req := httptest.NewRequest(http.MethodGet, "/waypoints/search?q=beach", nil)
 	req.Header.Set("X-Site-Token", "test-token")
 	rec := httptest.NewRecorder()
@@ -96,10 +97,81 @@ func TestIntegration_WaypointsSearch(t *testing.T) {
 	err := json.Unmarshal(body, &results)
 	assert.NoError(t, err, "decode search response")
 	for i, r := range results {
-		for _, key := range []string{"name", "description", "distance", "score"} {
+		for _, key := range []string{"name", "description", "distance", "score", "description_distance", "photo_distance", "photos"} {
 			assert.Contains(t, r, key, "search result [%d] must have key %q", i, key)
 		}
 	}
+}
+
+func TestIntegration_WaypointsSearch_Modes(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	mockEmbed := startMockEmbeddingServer(t, 384)
+	defer mockEmbed.Close()
+
+	handler := NewHandler(ServerConfig{
+		Pool:                pool,
+		Env:                 "dev",
+		EmbeddingServiceURL: mockEmbed.URL,
+		SiteToken:           "test-token",
+	})
+
+	t.Run("mode=description", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/waypoints/search?q=beach&mode=description", nil)
+		req.Header.Set("X-Site-Token", "test-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var results []map[string]interface{}
+		assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &results))
+		for i, r := range results {
+			assert.NotNil(t, r["description_distance"], "result [%d] description_distance should be set", i)
+			assert.Nil(t, r["photo_distance"], "result [%d] photo_distance should be nil in description mode", i)
+			assert.Nil(t, r["photos"], "result [%d] photos should be nil in description mode", i)
+		}
+	})
+
+	t.Run("mode=photo", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/waypoints/search?q=beach&mode=photo", nil)
+		req.Header.Set("X-Site-Token", "test-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var results []map[string]interface{}
+		assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &results))
+		for i, r := range results {
+			assert.Nil(t, r["description_distance"], "result [%d] description_distance should be nil in photo mode", i)
+			assert.NotNil(t, r["photo_distance"], "result [%d] photo_distance should be set", i)
+			assert.NotNil(t, r["photos"], "result [%d] photos should be present in photo mode", i)
+		}
+	})
+
+	t.Run("mode=combined explicit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/waypoints/search?q=beach&mode=combined", nil)
+		req.Header.Set("X-Site-Token", "test-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		var results []map[string]interface{}
+		assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &results))
+		// Combined mode should always include the photos array.
+		for i, r := range results {
+			assert.NotNil(t, r["photos"], "result [%d] photos should be present in combined mode", i)
+		}
+	})
+
+	t.Run("mode=invalid returns 400", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/waypoints/search?q=beach&mode=bogus", nil)
+		req.Header.Set("X-Site-Token", "test-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }
 
 func getTestPool(t *testing.T) *pgxpool.Pool {

@@ -96,16 +96,23 @@ Schema defined in `db/init.sql`. Key tables:
 
 `db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings.
 
-### Go server (`cmd/server/main.go`)
+### Go server (`cmd/server/`)
 
-Single file. Endpoints:
+Two files: `main.go` (routing, middleware, config) and `search.go` (hybrid search handler, embedding client, SQL queries).
+
+Endpoints:
 - `GET /health` — no auth
 - `GET /waypoints/count` — returns `{"count": N}`
-- `GET /waypoints/search?q=<query>` — semantic search; returns top 3 waypoints by cosine distance
+- `GET /waypoints/search?q=<query>&mode=<mode>` — hybrid semantic search; returns top 3 waypoints
+
+The `mode` parameter controls which embeddings are searched:
+- `combined` (default) — blends waypoint description + photo caption signals (50/50 weight)
+- `description` — waypoint description embeddings only
+- `photo` — photo caption embeddings only, aggregated per waypoint (top-5 average cosine distance)
 
 Auth: all non-health endpoints require `X-Site-Token` header matching `SITE_TOKEN` env var.
 
-**Dev vs prod embedding**: `ENV=prod` calls Hugging Face Inference API directly (different request/response format); dev calls the local Python embedding service at `EMBEDDING_SERVICE_URL` (default `http://127.0.0.1:5001`). These are separate code paths in `waypointsSearch`.
+**Dev vs prod embedding**: `ENV=prod` calls Hugging Face Inference API directly; dev calls the local Python embedding service at `EMBEDDING_SERVICE_URL` (default `http://127.0.0.1:5001`). Both use the HF wire format. Code lives in `search.go:fetchQueryEmbedding`.
 
 ### Embedding service (`embedding_service/main.py`)
 

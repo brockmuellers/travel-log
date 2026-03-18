@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -13,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/pgvector/pgvector-go"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
 )
 
@@ -97,7 +94,7 @@ func NewHandler(cfg ServerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(cfg.Pool))
-	mux.HandleFunc("GET /waypoints/search", waypointsSearch(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL))
+	mux.HandleFunc("GET /waypoints/search", waypointsSearchHybrid(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL))
 
 	noAuthPaths := []string{"/health"}
 	handler := requireSiteToken(cfg.SiteToken, mux, noAuthPaths)
@@ -173,105 +170,3 @@ func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// searchResult is one waypoint in search results (cosine distance; lower = better).
-type searchResult struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Distance    float64 `json:"distance"`
-	Score       float64 `json:"score"` // 0–100, (1 - distance) * 100
-}
-
-const hfEmbeddingModel = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5/pipeline/feature-extraction"
-
-func waypointsSearch(pool *pgxpool.Pool, env, embeddingServiceURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("q")
-		if q == "" {
-			http.Error(w, `{"error":"missing query parameter q"}`, http.StatusBadRequest)
-			return
-		}
-
-		// Get embedding from local service (dev) or Hugging Face (prod)
-		embURL := embeddingServiceURL + "/embed"
-		if env == "prod" {
-			embURL = hfEmbeddingModel
-		}
-		body, _ := json.Marshal(map[string]string{"inputs": q})
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, embURL, bytes.NewReader(body))
-		if err != nil {
-			http.Error(w, `{"error":"embedding request failed"}`, http.StatusInternalServerError)
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if env == "prod" {
-			token := os.Getenv("HUGGING_FACE_TOKEN")
-			if token == "" {
-				http.Error(w, `{"error":"HUGGING_FACE_TOKEN not set for prod"}`, http.StatusInternalServerError)
-				return
-			}
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			http.Error(w, `{"error":"embedding service unreachable"}`, http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("embedding service returned status: %d", resp.StatusCode)
-			http.Error(w, `{"error":"embedding service error"}`, http.StatusBadGateway)
-			return
-		}
-		var nested [][]float64
-		if err := json.NewDecoder(resp.Body).Decode(&nested); err != nil || len(nested) == 0 || len(nested[0]) != 384 {
-			http.Error(w, `{"error":"unexpected embedding dimension"}`, http.StatusBadGateway)
-			return
-		}
-		vec := make([]float32, len(nested[0]))
-		for i, v := range nested[0] {
-			vec[i] = float32(v)
-		}
-
-		// Cosine distance (<=>); order by distance ASC, limit 3
-		// Exclude rows with NULL embedding so we never scan NULL into distance.
-		rows, err := pool.Query(r.Context(),
-			"SELECT name, description, (embedding <=> $1) AS distance FROM waypoints WHERE embedding IS NOT NULL ORDER BY distance ASC LIMIT 3",
-			pgvector.NewVector(vec))
-		if err != nil {
-			http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		var results []searchResult
-		for rows.Next() {
-			var name, description string
-			var distance float64
-			if err := rows.Scan(&name, &description, &distance); err != nil {
-				http.Error(w, `{"error":"database scan failed"}`, http.StatusInternalServerError)
-				return
-			}
-			// All of these NaN/Inf checks aren't necessary in prod, but required for test with empty embedding to pass.
-			// They make the code robust so it's fine.
-			if math.IsNaN(distance) || math.IsInf(distance, 0) || distance < 0 {
-				distance = 0
-			}
-			score := (1 - distance) * 100
-			if score < 0 || math.IsNaN(score) || math.IsInf(score, 0) {
-				score = 0
-			}
-			results = append(results, searchResult{Name: name, Description: description, Distance: distance, Score: score})
-		}
-		if err := rows.Err(); err != nil {
-			http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(results); err != nil {
-			log.Printf("encode search results: %v", err)
-			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
-			return
-		}
-	}
-}
