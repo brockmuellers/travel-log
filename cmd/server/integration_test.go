@@ -122,12 +122,12 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// startMockEmbeddingServer starts an HTTP server that responds to POST /embed with a JSON body
-// containing an "embedding" array of dim floats (zeros). Used so search tests don't need a real embedding service.
+// startMockEmbeddingServer starts an HTTP server that responds to POST /embed with a nested
+// [[dim floats]] array (zeros) matching the HF wire format. Used so search tests don't need a real embedding service.
 func startMockEmbeddingServer(t *testing.T, dim int) *httptest.Server {
 	t.Helper()
 	vec := make([]float64, dim)
-	body, _ := json.Marshal(map[string]interface{}{"embedding": vec})
+	body, _ := json.Marshal([][]float64{vec})
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/embed" || r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusNotFound)

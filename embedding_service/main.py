@@ -7,7 +7,6 @@ semantic search.
 import json
 import os
 import sys
-from typing import Any
 
 from sentence_transformers import SentenceTransformer
 
@@ -28,21 +27,22 @@ def encode(text: str) -> list[float]:
     return model.encode(text).tolist()
 
 
-def handle_embed(body: bytes) -> tuple[int, dict]:
+def handle_embed(body: bytes) -> tuple[int, list[list[float]] | dict[str, str]]:
     """
-    Parse JSON body {"text": "..."}, return (status_code, response_dict).
+    Parse JSON body {"inputs": "..."}, return (status_code, response).
+    On success returns (200, [[f1, f2, ...]]) matching the HF wire format.
     """
     try:
         data = json.loads(body.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return 400, {"error": "invalid JSON"}
 
-    text = data.get("text")
+    text = data.get("inputs")
     if text is None:
-        return 400, {"error": "missing field: text"}
+        return 400, {"error": "missing field: inputs"}
 
     embedding = encode(text)
-    return 200, {"embedding": embedding}
+    return 200, [embedding]
 
 
 def main() -> None:
@@ -77,9 +77,6 @@ def main() -> None:
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(resp).encode("utf-8"))
-
-        def log_message(self, format: str, *args: Any) -> None:
-            print(args[0], file=sys.stderr)
 
     server = HTTPServer((host, port), Handler)
     print(f"Embedding service listening on http://{host}:{port}", file=sys.stderr)
