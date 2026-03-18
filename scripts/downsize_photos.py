@@ -19,7 +19,7 @@ def process_photos(
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    valid_exts = ('.jpg', '.jpeg')
+    valid_exts = (".jpg", ".jpeg")
     files = [f for f in os.listdir(input_folder) if f.lower().endswith(valid_exts)]
     files.sort()
 
@@ -42,7 +42,7 @@ def process_photos(
         try:
             with Image.open(input_path) as img:
                 # 1. Extract the EXIF data
-                exif_data = img.info.get('exif')
+                exif_data = img.info.get("exif")
 
                 # 2. Downsize the image
                 img.thumbnail(max_size, Image.Resampling.LANCZOS)
@@ -68,7 +68,9 @@ def process_photos(
                 exif = img.getexif()
                 # EXIF tag 272 is the industry standard for 'Model'
                 model = exif.get(272) if exif else None
-                if not model or ("Pixel 6" not in str(model) and "Pixel 10 Pro" not in str(model)):
+                if not model or (
+                    "Pixel 6" not in str(model) and "Pixel 10 Pro" not in str(model)
+                ):
                     print(f"Skipping {filename} -> Model is '{model}'")
                     continue
 
@@ -100,7 +102,9 @@ def process_photos(
 
 
 @click.command()
-@click.argument("input_dir", type=click.Path(exists=True, file_okay=False, path_type=str))
+@click.argument(
+    "input_dir", type=click.Path(exists=True, file_okay=False, path_type=str)
+)
 @click.argument("output_dir", type=click.Path(path_type=str))
 def run(input_dir: str, output_dir: str) -> None:
     """

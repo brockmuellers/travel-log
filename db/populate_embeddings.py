@@ -57,7 +57,9 @@ def populate_waypoint_embeddings() -> None:
         conn.close()
         return
 
-    print(f"Processing {len(rows)} waypoint(s) with description and missing embedding...")
+    print(
+        f"Processing {len(rows)} waypoint(s) with description and missing embedding..."
+    )
 
     try:
         for waypoint_id, description in rows:
@@ -148,4 +150,3 @@ if __name__ == "__main__":
     # Run both waypoint and photo embedding population.
     populate_waypoint_embeddings()
     populate_photo_embeddings()
-

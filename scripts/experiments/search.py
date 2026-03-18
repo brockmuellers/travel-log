@@ -14,7 +14,8 @@ DB_CONFIG = os.getenv("DATABASE_CONFIG")
 PHOTOS_BASE_DIR = Path(os.getenv("PRIVATE_DATA_DIR")) / "photos"
 
 # Load the SAME model you used for populating
-model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+
 
 def search_waypoints(query_text: str) -> None:
     conn = None
@@ -105,8 +106,11 @@ def search_photos(query_text: str) -> None:
         # If we found valid images, open them all in ONE window using Ubuntu's default viewer
         if photo_paths:
             # eog is the standard Ubuntu image viewer command
-            subprocess.Popen(['eog'] + photo_paths, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+            subprocess.Popen(
+                ["eog"] + photo_paths,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     except Exception as e:
         print(f"Error: {e}")

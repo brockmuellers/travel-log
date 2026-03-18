@@ -1,6 +1,5 @@
 import csv
 import os
-import sys
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -16,16 +15,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # My iNaturalist observations file
-inat_file = os.path.join(os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observations-679011.csv")
+inat_file = os.path.join(
+    os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observations-679011.csv"
+)
 
 # The large GBIF report file
-gbif_file = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "gbif_inaturalist_research_grade_observations_species_list_2026-02-10.csv")
+gbif_file = os.path.join(
+    os.getenv("PUBLIC_DATA_DIR"),
+    "gbif_inaturalist_research_grade_observations_species_list_2026-02-10.csv",
+)
 
 # The output file name
-output_file = os.path.join(os.getenv("INTERIM_DATA_DIR"), "inaturalist/filtered_gbif_inaturalist_species_list.csv")
+output_file = os.path.join(
+    os.getenv("INTERIM_DATA_DIR"),
+    "inaturalist/filtered_gbif_inaturalist_species_list.csv",
+)
 
 # GBIF exports are often Tab-Separated Values (TSV) even if named .csv
-delimiter = '\t'
+delimiter = "\t"
 
 # Strict species matching or a more fuzzy version?
 # Actually I need to think more about this - a lot of my observations are not species / subspecies level
@@ -42,6 +49,7 @@ special_matches = {
 }
 # ---------------------
 
+
 def filter_gbif_robust() -> None:
     print(f"Reading targets from {inat_file}...")
 
@@ -51,15 +59,15 @@ def filter_gbif_robust() -> None:
         # 1. Strict Filter: Only look for Species or Subspecies
         # We drop any row that doesn't have a species name (e.g. Family/Genus level IDs)
         # This prevents the "8000 rows" issue where "Falco" matches all falcons.
-        df_species = df.dropna(subset=['taxon_species_name'])
+        df_species = df.dropna(subset=["taxon_species_name"])
 
         # 2. Build Target List
         # We collect both the scientific name and the species name to catch everything.
         # EDIT: skipping species name for now, scientific name seems good enough
         target_names = set()
-        if 'scientific_name' in df_species.columns:
-            target_names.update(df_species['scientific_name'].astype(str).str.strip())
-        #if 'taxon_species_name' in df_species.columns:
+        if "scientific_name" in df_species.columns:
+            target_names.update(df_species["scientific_name"].astype(str).str.strip())
+        # if 'taxon_species_name' in df_species.columns:
         #    target_names.update(df_species['taxon_species_name'].astype(str).str.strip())
 
         print(f"Found {len(target_names)} unique species/subspecies targets.")
@@ -75,16 +83,19 @@ def filter_gbif_robust() -> None:
     match_count = 0
 
     try:
-        with open(gbif_file, 'r', encoding='utf-8', errors='replace') as fin, \
-             open(output_file, 'w', encoding='utf-8', newline='') as fout:
-
+        with (
+            open(gbif_file, "r", encoding="utf-8", errors="replace") as fin,
+            open(output_file, "w", encoding="utf-8", newline="") as fout,
+        ):
             reader = csv.DictReader(fin, delimiter=delimiter)
 
             if not reader.fieldnames:
                 print("Error: Could not read headers.")
                 return
 
-            writer = csv.DictWriter(fout, fieldnames=reader.fieldnames, delimiter=delimiter)
+            writer = csv.DictWriter(
+                fout, fieldnames=reader.fieldnames, delimiter=delimiter
+            )
             writer.writeheader()
 
             for row in reader:
@@ -92,13 +103,12 @@ def filter_gbif_robust() -> None:
                 candidates = set()
 
                 # A. Get raw values from GBIF
-                species_col = row.get('species', '').strip()
-                sci_name = row.get('scientificName', '').strip()
+                species_col = row.get("species", "").strip()
+                sci_name = row.get("scientificName", "").strip()
 
                 # Decide if this is a subspecies, so we know to match on trinomial
-                tax_rank = row.get('taxonRank', '').strip()
+                tax_rank = row.get("taxonRank", "").strip()
                 is_subspecies = tax_rank == "SUBSPECIES"
-
 
                 # B. Add exact values to candidates set (e.g. "Mahonia nervosa")
                 # The species col is the most frequent exact match so just using that
@@ -124,19 +134,21 @@ def filter_gbif_robust() -> None:
                     # species row inappropriately matches a "Saguinus weddelli" entry
                     if is_subspecies:
                         if len(parts) >= 3:
-                            candidates.add(f"{parts[0]} {parts[1]} {parts[2]}") # "Falco columbarius suckleyi"
+                            candidates.add(
+                                f"{parts[0]} {parts[1]} {parts[2]}"
+                            )  # "Falco columbarius suckleyi"
                     else:
                         # Skip single-word genera
                         if len(parts) >= 2:
-                            candidates.add(f"{parts[0]} {parts[1]}") # "Berberis nervosa"
+                            candidates.add(
+                                f"{parts[0]} {parts[1]}"
+                            )  # "Berberis nervosa"
                     """
                     if len(parts) >= 2:
                         candidates.add(f"{parts[0]} {parts[1]}") # "Berberis nervosa"
                     if len(parts) >= 3:
                         candidates.add(f"{parts[0]} {parts[1]} {parts[2]}") # "Falco columbarius suckleyi"
                     """
-
-
 
                 # D. Check for Match
                 # If ANY candidate is in our target list, keep the row.
@@ -150,7 +162,6 @@ def filter_gbif_robust() -> None:
                     match_count += 1
                     found_names.update(match)
 
-
     except Exception as e:
         print(f"An error occurred: {e}")
         return
@@ -159,10 +170,13 @@ def filter_gbif_robust() -> None:
 
     missing = target_names - found_names
     if len(missing) > 0:
-        print(f"\nStats: Found matches for {len(found_names)} names. Missed {len(missing)} names.")
+        print(
+            f"\nStats: Found matches for {len(found_names)} names. Missed {len(missing)} names."
+        )
         print("First missing names (check these manually):")
         for name in list(missing)[:20]:
             print(f"  - {name}")
+
 
 if __name__ == "__main__":
     filter_gbif_robust()

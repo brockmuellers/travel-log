@@ -11,9 +11,10 @@ import click
 from dotenv import load_dotenv
 
 # XML Namespace for GPX 1.1
-NS = {'gpx': 'http://www.topografix.com/GPX/1/1'}
-ET.register_namespace('', NS['gpx'])
+NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
+ET.register_namespace("", NS["gpx"])
 ROUND_TO = 6  # Round new lat/lon values to make obfuscation less obvious
+
 
 def normalize_longitude(lon: float) -> float:
     """
@@ -21,6 +22,7 @@ def normalize_longitude(lon: float) -> float:
     Ex: 181.0 -> -179.0
     """
     return (lon + 180) % 360 - 180
+
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -33,13 +35,18 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
 
-    a = math.sin(dphi/2)**2 + \
-        math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return R * c
 
-def calculate_destination_point(lat: float, lon: float, distance_km: float, bearing_degrees: float) -> tuple[float, float]:
+
+def calculate_destination_point(
+    lat: float, lon: float, distance_km: float, bearing_degrees: float
+) -> tuple[float, float]:
     """
     Calculates a new coordinate given a start point, distance (km), and bearing (degrees).
     """
@@ -49,19 +56,28 @@ def calculate_destination_point(lat: float, lon: float, distance_km: float, bear
     lon_rad = math.radians(lon)
     bearing_rad = math.radians(bearing_degrees)
 
-    new_lat_rad = math.asin(math.sin(lat_rad) * math.cos(distance_km / R) +
-                            math.cos(lat_rad) * math.sin(distance_km / R) * math.cos(bearing_rad))
+    new_lat_rad = math.asin(
+        math.sin(lat_rad) * math.cos(distance_km / R)
+        + math.cos(lat_rad) * math.sin(distance_km / R) * math.cos(bearing_rad)
+    )
 
-    new_lon_rad = lon_rad + math.atan2(math.sin(bearing_rad) * math.sin(distance_km / R) * math.cos(lat_rad),
-                                       math.cos(distance_km / R) - math.sin(lat_rad) * math.sin(new_lat_rad))
+    new_lon_rad = lon_rad + math.atan2(
+        math.sin(bearing_rad) * math.sin(distance_km / R) * math.cos(lat_rad),
+        math.cos(distance_km / R) - math.sin(lat_rad) * math.sin(new_lat_rad),
+    )
 
-    final_lat = math.degrees(new_lat_rad) # Probably doesn't handle wrapping at poles correctly
+    final_lat = math.degrees(
+        new_lat_rad
+    )  # Probably doesn't handle wrapping at poles correctly
     final_lon = normalize_longitude(math.degrees(new_lon_rad))
 
     # Round the final values so it's less obvious that obfuscation was done
     return round(final_lat, ROUND_TO), round(final_lon, ROUND_TO)
 
-def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_config: dict[str, Any]) -> bool:
+
+def process_gpx(
+    input_file: str | Path, output_file: str | Path, sensitive_config: dict[str, Any]
+) -> bool:
     print(f"Reading GPX: {input_file}")
     tree = ET.parse(input_file)
     root = tree.getroot()
@@ -71,57 +87,59 @@ def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_confi
 
     # 0. Pre-Pass: Handle Explicit "Ghost" Coordinates from JSON (those not matching a waypoint)
     for name, config in sensitive_config.items():
-        if 'lat' in config and 'lon' in config:
-            lat = config['lat']
-            lon = config['lon']
+        if "lat" in config and "lon" in config:
+            lat = config["lat"]
+            lon = config["lon"]
 
             # Calculate the random "fake" location immediately
-            rng = random.Random(config['seed'])
+            rng = random.Random(config["seed"])
 
-            dist = config['radius']
+            dist = config["radius"]
             random_bearing = rng.uniform(0, 360)
 
             new_lat, new_lon = calculate_destination_point(
-                lat, lon,
-                rng.uniform(0, dist),
-                rng.uniform(0, 360)
+                lat, lon, rng.uniform(0, dist), rng.uniform(0, 360)
             )
 
             # Register this as a sensitive zone
             point_transformations[(lat, lon)] = {
-                'new_pos': (new_lat, new_lon),
-                'radius': dist
+                "new_pos": (new_lat, new_lon),
+                "radius": dist,
             }
-            print(f"  [Ghost Point] '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°")
+            print(
+                f"  [Ghost Point] '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°"
+            )
 
     # 1. Process Waypoints (<wpt>)
-    for wpt in root.findall('gpx:wpt', NS):
-        name_tag = wpt.find('gpx:name', NS)
+    for wpt in root.findall("gpx:wpt", NS):
+        name_tag = wpt.find("gpx:name", NS)
         if name_tag is not None and name_tag.text in sensitive_config:
             name = name_tag.text
             config = sensitive_config[name]
 
-            lat = float(wpt.get('lat'))
-            lon = float(wpt.get('lon'))
+            lat = float(wpt.get("lat"))
+            lon = float(wpt.get("lon"))
             original_key = (lat, lon)
 
             # Seed based on the config to ensure consistency across the name.
             # Use a local RNG instance to avoid polluting global state
-            rng = random.Random(config['seed'])
+            rng = random.Random(config["seed"])
 
-            dist = config['radius']
+            dist = config["radius"]
             random_bearing = rng.uniform(0, 360)
 
-            new_lat, new_lon = calculate_destination_point(lat, lon, dist, random_bearing)
+            new_lat, new_lon = calculate_destination_point(
+                lat, lon, dist, random_bearing
+            )
 
             # Update the waypoint in the GPX
-            wpt.set('lat', str(new_lat))
-            wpt.set('lon', str(new_lon))
+            wpt.set("lat", str(new_lat))
+            wpt.set("lon", str(new_lon))
 
             # Log this transformation for the track editing phase
             point_transformations[original_key] = {
-                'new_pos': (new_lat, new_lon),
-                'radius': dist
+                "new_pos": (new_lat, new_lon),
+                "radius": dist,
             }
 
             print(f"  Obfuscating '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°")
@@ -130,13 +148,13 @@ def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_confi
     count_deleted = 0
     count_moved = 0
 
-    for trk in root.findall('gpx:trk', NS):
-        for trkseg in trk.findall('gpx:trkseg', NS):
+    for trk in root.findall("gpx:trk", NS):
+        for trkseg in trk.findall("gpx:trkseg", NS):
             points_to_keep = []
 
-            for trkpt in trkseg.findall('gpx:trkpt', NS):
-                pt_lat = float(trkpt.get('lat'))
-                pt_lon = float(trkpt.get('lon'))
+            for trkpt in trkseg.findall("gpx:trkpt", NS):
+                pt_lat = float(trkpt.get("lat"))
+                pt_lon = float(trkpt.get("lon"))
 
                 should_delete = False
                 matched_transformation = False
@@ -151,14 +169,14 @@ def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_confi
 
                     if is_original_point:
                         # Move exact matches
-                        new_lat, new_lon = rules['new_pos']
-                        trkpt.set('lat', str(new_lat))
-                        trkpt.set('lon', str(new_lon))
+                        new_lat, new_lon = rules["new_pos"]
+                        trkpt.set("lat", str(new_lat))
+                        trkpt.set("lon", str(new_lon))
                         matched_transformation = True
                         count_moved += 1
                         break
 
-                    elif dist <= rules['radius']:
+                    elif dist <= rules["radius"]:
                         # Delete nearby points
                         should_delete = True
 
@@ -172,8 +190,8 @@ def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_confi
             # Rebuild the segment with only kept points
             trkseg[:] = points_to_keep
 
-    tree.write(output_file, encoding='UTF-8', xml_declaration=True)
-    print(f"Processing complete.")
+    tree.write(output_file, encoding="UTF-8", xml_declaration=True)
+    print("Processing complete.")
     print(f"  - Track points moved: {count_moved}")
     print(f"  - Track points deleted: {count_deleted}")
     print(f"  - Saved to: {output_file}")
@@ -196,7 +214,7 @@ def process_gpx(input_file: str | Path, output_file: str | Path, sensitive_confi
     "--deploy-path",
     type=click.Path(path_type=str),
     default=None,
-    help="Folder to copy output GPX to for deployment. Default: DEPLOY_TARGET/gpx. Pass \"\" to disable.",
+    help='Folder to copy output GPX to for deployment. Default: DEPLOY_TARGET/gpx. Pass "" to disable.',
 )
 def run(input_gpx: str, waypoints: str | None, deploy_path: str | None) -> None:
     """
@@ -217,7 +235,9 @@ def run(input_gpx: str, waypoints: str | None, deploy_path: str | None) -> None:
     load_dotenv()
 
     default_output_path = os.getenv("FINAL_DATA_DIR")
-    default_waypoints = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "sensitive_waypoints.json")
+    default_waypoints = os.path.join(
+        os.getenv("PRIVATE_DATA_DIR"), "sensitive_waypoints.json"
+    )
     default_deploy_path = os.path.join(os.getenv("DEPLOY_TARGET"), "gpx")
 
     waypoints_path = waypoints if waypoints is not None else default_waypoints

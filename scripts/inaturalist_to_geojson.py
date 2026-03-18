@@ -6,7 +6,10 @@ import shutil
 import click
 from dotenv import load_dotenv
 
-def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: str) -> bool:
+
+def convert_inat_csv_to_geojson(
+    input_csv: str, output_geojson: str, taxa_json: str
+) -> bool:
     """
     Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
 
@@ -20,14 +23,14 @@ def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: 
     print(f"Loading taxon data from {taxa_json}...")
     taxa_lookup = {}
     try:
-        with open(taxa_json, 'r', encoding='utf-8') as f:
+        with open(taxa_json, "r", encoding="utf-8") as f:
             raw_taxa = json.load(f)
             # Create a dictionary where Key = ID (as string) and Value = observations_count
             # We convert ID to string because CSV DictReader reads all columns as strings
             for item in raw_taxa:
-                t_id = str(item.get('id', ''))
+                t_id = str(item.get("id", ""))
                 if t_id:
-                    taxa_lookup[t_id] = item.get('observations_count', 0)
+                    taxa_lookup[t_id] = item.get("observations_count", 0)
 
     except FileNotFoundError:
         print(f"Warning: {taxa_json} not found. Global counts will be 0.")
@@ -36,14 +39,14 @@ def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: 
 
     print(f"Reading {input_csv}...")
 
-    with open(input_csv, 'r', encoding='utf-8') as f:
+    with open(input_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
 
         for row in reader:
             # 1. Parse Coordinates
             try:
-                lat = float(row.get('latitude', 0))
-                lon = float(row.get('longitude', 0))
+                lat = float(row.get("latitude", 0))
+                lon = float(row.get("longitude", 0))
             except ValueError:
                 # Skip rows with invalid or missing coordinates
                 continue
@@ -54,43 +57,37 @@ def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: 
 
             # 2. Determine Title (Fallback Strategy)
             # Try Common Name -> Scientific Name -> Species Guess -> "Observation"
-            title = row.get('common_name', '').strip()
+            title = row.get("common_name", "").strip()
             if not title:
-                title = row.get('scientific_name', '').strip()
+                title = row.get("scientific_name", "").strip()
             if not title:
-                title = row.get('species_guess', '').strip()
+                title = row.get("species_guess", "").strip()
             if not title:
                 title = "Observation"
 
             # 2.1 Lookup global count from taxon data
-            taxon_id = row.get('taxon_id', '')
-            global_obs_count = taxa_lookup.get(taxon_id, 0) # Default to 0 if not found
+            taxon_id = row.get("taxon_id", "")
+            global_obs_count = taxa_lookup.get(taxon_id, 0)  # Default to 0 if not found
 
             # 3. Construct GeoJSON Feature
             feature = {
                 "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [lon, lat]
-                },
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
                 "properties": {
                     "title": title,
-                    "image_url": row.get('image_url', ''),
-                    "obs_url": row.get('url', ''),
-                    "date": row.get('observed_on', ''),
+                    "image_url": row.get("image_url", ""),
+                    "obs_url": row.get("url", ""),
+                    "date": row.get("observed_on", ""),
                     "global_count": global_obs_count,
-                }
+                },
             }
             features.append(feature)
 
     # 4. Construct FeatureCollection
-    geojson_data = {
-        "type": "FeatureCollection",
-        "features": features
-    }
+    geojson_data = {"type": "FeatureCollection", "features": features}
 
     # 5. Write to File
-    with open(output_geojson, 'w', encoding='utf-8') as f:
+    with open(output_geojson, "w", encoding="utf-8") as f:
         json.dump(geojson_data, f, indent=2)
 
     print(f"Successfully wrote {len(features)} points to {output_geojson}")
@@ -103,7 +100,7 @@ def convert_inat_csv_to_geojson(input_csv: str, output_geojson: str, taxa_json: 
     "--deploy-path",
     type=click.Path(path_type=str),
     default=None,
-    help="Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass \"\" to disable.",
+    help='Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass "" to disable.',
 )
 def run(input_csv: str, deploy_path: str | None) -> None:
     """

@@ -1,6 +1,3 @@
-import sys
-from pathlib import Path
-
 from db import populate_embeddings
 
 

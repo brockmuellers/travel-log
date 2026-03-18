@@ -19,6 +19,7 @@ PHOTO_FILENAME_TIMESTAMP_FMT = "%Y-%m-%d %H.%M.%S"
 # Global TimezoneFinder instance reused for all photos to avoid per-photo initialization cost.
 _timezone_finder = TimezoneFinder()
 
+
 def _timestamp_str_from_filename(filename: str | None) -> str | None:
     """
     Extract local timestamp from a filename like "2024-08-04 17.02.35.jpg".
@@ -64,19 +65,22 @@ def _parse_photo_time(
     return (utc_dt, dt_naive, tz_name)
 
 
-def connect_to_database(db_params: dict[str, Any]) -> psycopg2.extensions.connection | None:
-    """ Connect to the PostgreSQL database server and return a connection object. """
+def connect_to_database(
+    db_params: dict[str, Any],
+) -> psycopg2.extensions.connection | None:
+    """Connect to the PostgreSQL database server and return a connection object."""
     conn = None
     try:
-        print('Connecting to the PostgreSQL database...')
+        print("Connecting to the PostgreSQL database...")
         conn = psycopg2.connect(**db_params)
-        print('Connection successful.')
+        print("Connection successful.")
         return conn
     except (Exception, psycopg2.DatabaseError) as error:
         print(f"Error connecting to the database: {error}")
         if conn:
             conn.close()
         return None
+
 
 def _latest_jsonl_photos_files(paths: list[Path]) -> list[Path]:
     """
@@ -93,11 +97,17 @@ def _latest_jsonl_photos_files(paths: list[Path]) -> list[Path]:
         content_ym, file_date = parts[1], parts[2]
         if len(content_ym) != 7 or len(file_date) != 10:  # YYYY-MM, YYYY-MM-DD
             continue
-        if content_ym not in latest_per_ym or file_date > latest_per_ym[content_ym].stem.split("_")[2]:
+        if (
+            content_ym not in latest_per_ym
+            or file_date > latest_per_ym[content_ym].stem.split("_")[2]
+        ):
             latest_per_ym[content_ym] = path
     return sorted(latest_per_ym.values(), key=lambda p: p.name)
 
-def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path) -> None:
+
+def run_photos_etl(
+    conn: psycopg2.extensions.connection, photos_dir: str | Path
+) -> None:
     """
     Populate the photos table from JSONL files in photos_dir.
     Each line is a JSON object with filename, caption, timestamp, and location.
@@ -110,7 +120,9 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
 
     jsonl_files = _latest_jsonl_photos_files(list(photos_dir.glob("*.jsonl")))
     if not jsonl_files:
-        print(f"No .jsonl files found in {photos_dir} (or none matching captions_YYYY-MM_YYYY-MM-DD.jsonl)")
+        print(
+            f"No .jsonl files found in {photos_dir} (or none matching captions_YYYY-MM_YYYY-MM-DD.jsonl)"
+        )
         return
 
     # -------------------------------------------------------------------------
@@ -120,10 +132,15 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
     #       windows. This time-based match is a stopgap.
     # -------------------------------------------------------------------------
     cur = conn.cursor()
-    cur.execute("SELECT id, start_time, end_time FROM waypoints ORDER BY start_time NULLS LAST")
+    cur.execute(
+        "SELECT id, start_time, end_time FROM waypoints ORDER BY start_time NULLS LAST"
+    )
     waypoint_windows = cur.fetchall()  # list of (id, start_time, end_time)
     if not waypoint_windows:
-        print("ERROR: No waypoints found. Populate waypoints before running photos ETL.", file=sys.stderr)
+        print(
+            "ERROR: No waypoints found. Populate waypoints before running photos ETL.",
+            file=sys.stderr,
+        )
         raise RuntimeError("waypoints table is empty")
 
     def waypoint_id_for_time(t: datetime | None) -> int | None:
@@ -139,7 +156,9 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
                     return wp_id
                 continue
             # end is None (last waypoint of a trip): only match if no later waypoint has start <= t
-            next_start = waypoint_windows[i + 1][1] if i + 1 < len(waypoint_windows) else None
+            next_start = (
+                waypoint_windows[i + 1][1] if i + 1 < len(waypoint_windows) else None
+            )
             if next_start is None or t < next_start:
                 return wp_id
         return None
@@ -177,15 +196,40 @@ def run_photos_etl(conn: psycopg2.extensions.connection, photos_dir: str | Path)
                 )
                 waypoint_id = waypoint_id_for_time(time_taken)
                 if location_wkt:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO photos (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location, location_metadata, embedding)
                         VALUES (%s, %s, %s, %s, %s, %s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s::jsonb, %s)
-                    """, (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location_wkt, location_metadata, None))
+                    """,
+                        (
+                            waypoint_id,
+                            filename,
+                            caption,
+                            time_taken,
+                            time_taken_local,
+                            time_taken_local_tz,
+                            location_wkt,
+                            location_metadata,
+                            None,
+                        ),
+                    )
                 else:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO photos (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location, location_metadata, embedding)
                         VALUES (%s, %s, %s, %s, %s, %s, NULL, %s::jsonb, %s)
-                    """, (waypoint_id, filename, caption, time_taken, time_taken_local, time_taken_local_tz, location_metadata, None))
+                    """,
+                        (
+                            waypoint_id,
+                            filename,
+                            caption,
+                            time_taken,
+                            time_taken_local,
+                            time_taken_local_tz,
+                            location_metadata,
+                            None,
+                        ),
+                    )
                 inserted_count += 1
 
     if inserted_count == 0:
@@ -204,7 +248,7 @@ if __name__ == "__main__":
         "database": os.getenv("DATABASE_NAME"),
         "user": os.getenv("DATABASE_USER"),
         "password": os.getenv("DATABASE_PASSWORD"),
-        "port": os.getenv("DATABASE_PORT")
+        "port": os.getenv("DATABASE_PORT"),
     }
     connection = connect_to_database(db_params)
     if connection is None:

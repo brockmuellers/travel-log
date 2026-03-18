@@ -3,6 +3,7 @@ Tiny HTTP service that encodes text to 384-dim vectors using the same model
 as waypoint embeddings (BAAI/bge-small-en-v1.5). Used by the Go server for
 semantic search.
 """
+
 import json
 import os
 import sys

@@ -7,12 +7,12 @@ import click
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # --- Config ---
 load_dotenv()
 
-GEMINI_MODEL = 'gemini-3-flash-preview'
+GEMINI_MODEL = "gemini-3-flash-preview"
 model_shorthand = "gemini3fp"
 # MODELS = {
 #     '25fl': 'gemini-2.5-flash-lite', # cheap and adequate at OCR but bad at following instructions, 10 RPM 20 RPD
@@ -24,9 +24,9 @@ model_shorthand = "gemini3fp"
 #     }
 
 # thinking level is for gemini 3 models? just trying out medium for now
-THINKING_CONFIG=types.ThinkingConfig(include_thoughts=True, thinking_level="medium")
+THINKING_CONFIG = types.ThinkingConfig(include_thoughts=True, thinking_level="medium")
 # thinking budget is for gemini 2.5; -1 means dynamic thinking, 1024 would work; range maybe 0 or 512 to 24576
-#THINKING_CONFIG=types.ThinkingConfig(include_thoughts=True, thinking_budget=1024)
+# THINKING_CONFIG=types.ThinkingConfig(include_thoughts=True, thinking_budget=1024)
 
 # TODO load from file
 PROMPT_TEMPLATE = """
@@ -55,15 +55,17 @@ Return a **valid JSON object** that strictly matches the structure and content o
 """
 
 # root paths
-waypoints_root_path = os.path.join(os.getenv("INTERIM_DATA_DIR"),"findpenguins")
-pdf_root_path =  os.path.join(os.getenv("PRIVATE_DATA_DIR"),"robinblog")
-output_root_path = os.path.join(os.getenv("INTERIM_DATA_DIR"),"robinblog")
+waypoints_root_path = os.path.join(os.getenv("INTERIM_DATA_DIR"), "findpenguins")
+pdf_root_path = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "robinblog")
+output_root_path = os.path.join(os.getenv("INTERIM_DATA_DIR"), "robinblog")
+
 
 # Defining json structure to prevent the LLM from modifying it:
 class Waypoint(BaseModel):
     name: str
     time: str
     description: str
+
 
 def validate_waypoints(
     input_data: list[dict[str, Any]] | str,
@@ -94,7 +96,9 @@ def validate_waypoints(
     # Check Length
     if len(input_data) != len(output_data):
         valid = False
-        errors.append(f"Length mismatch: Input has {len(input_data)} items, Output has {len(output_data)}.")
+        errors.append(
+            f"Length mismatch: Input has {len(input_data)} items, Output has {len(output_data)}."
+        )
 
     # Check Content
     for i, (original, generated) in enumerate(zip(input_data, output_data)):
@@ -120,7 +124,10 @@ def validate_waypoints(
 
     return valid, errors
 
-def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, verbose: bool) -> None:
+
+def describe_waypoints(
+    waypoints_file: str, pdf_file: str, output_file: str, verbose: bool
+) -> None:
 
     # # 1. Setup API
     client = genai.Client()
@@ -152,16 +159,15 @@ def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, ver
         contents=[prompt, sample_file],
         config=types.GenerateContentConfig(
             # Forcing valid json output
-            response_mime_type='application/json',
+            response_mime_type="application/json",
             response_schema=list[Waypoint],
-            thinking_config=THINKING_CONFIG
-        )
+            thinking_config=THINKING_CONFIG,
+        ),
     )
 
     # 6. Cleanup (Optional but recommended)
     # Delete the file from the cloud to save storage limits
     client.files.delete(name=sample_file.name)
-
 
     """
     TODO: do I need to remove these; I did from the gemini 3 pro output
@@ -193,7 +199,7 @@ def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, ver
         print("Output valid!")
     else:
         print(f"OUTPUT INVALID!!! ERRORS: {errors}")
-        print(f"\nDID NOT SAVE OUTPUT TO OUTPUT FILE")
+        print("\nDID NOT SAVE OUTPUT TO OUTPUT FILE")
         return
 
     # RATE LIMIT AVOIDANCE
@@ -201,7 +207,7 @@ def describe_waypoints(waypoints_file: str, pdf_file: str, output_file: str, ver
 
     # Write to file
     print(f"Writing {pdf_file}...")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(output, f, indent=4)
 
 
