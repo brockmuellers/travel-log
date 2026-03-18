@@ -50,7 +50,7 @@ Production semantic search is handled by the Hugging Face API.
 **Testing**
 
 1. Start the servers with `make run-server` and `make run-embedding`
-2. `curl "http://localhost:8081/waypoints/search?q=ancient%20temples"`
+2. `curl -H "X-Site-Token: $SITE_TOKEN" "http://localhost:8081/waypoints/search?q=ancient%20temples"`
 
 ### Testing
 
