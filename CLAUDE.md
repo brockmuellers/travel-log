@@ -88,7 +88,7 @@ Schema defined in `db/init.sql`. Key tables:
 ### ETL scripts
 
 - `db/populate_waypoints.py` — parses FindPenguins GPX, fetches SRTM elevation, loads waypoints/tracks/track_points
-- `db/populate_photos.py` — photo ingestion (in progress)
+- `db/populate_photos.py` — photo metadata ingestion
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
 - `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions

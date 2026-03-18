@@ -8,9 +8,10 @@ from dotenv import load_dotenv
 
 """
 Extracts waypoint time and name from a gpx file.
-For ingestion by LLM.
+
 Current usage: follow up running this script by manually splitting the trip-level
-file into country-level files (e.g. southeast-asia_waypoints_02-cambodia.json)
+file into country-level files (e.g. southeast-asia_waypoints_02-cambodia.json),
+keeping the _general_ waypoint in each one
 """
 
 
