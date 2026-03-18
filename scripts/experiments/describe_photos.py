@@ -1,7 +1,11 @@
+import os
 import re
 import time
+from typing import Any, Optional
 
 import ollama
+from geopy.geocoders import Nominatim
+from PIL import Image
 
 image_paths = [
     # '/home/sara/Dropbox/Pictures/phone/2025/08/2025-08-31 08.42.04.jpg',
@@ -16,6 +20,8 @@ image_paths = [
     '/home/sara/repos/travel-log/data/private/photos/2024/12/2024-12-04 14.11.21.jpg',
     '/home/sara/repos/travel-log/data/private/photos/2024/12/2024-12-06 12.46.07.jpg',
     '/home/sara/repos/travel-log/data/private/photos/2024/12/2024-12-08 09.42.05.jpg',
+
+    '/home/sara/repos/travel-log/data/private/photos/2025/10/2025-10-03 14.48.07.jpg'
 
 ]
 
@@ -64,7 +70,9 @@ prompt = """Describe this image using exactly two lines:
 #prompt = "Write a highly detailed one-sentence caption for this photo, which describes both its main subject and surroundings."
 #prompt = "Write a one-sentence caption for this photo. The caption should contain all details about the main subject, notable background details, and setting."
 
-def clean_llm_caption(raw_text):
+geolocator = Nominatim(user_agent="my_caption_app")
+
+def _clean_llm_caption(raw_text):
     # 1. Split the text into individual lines
     lines = raw_text.strip().split('\n')
 
@@ -80,19 +88,91 @@ def clean_llm_caption(raw_text):
     # 3. Join them back together with a single space
     return " ".join(cleaned_sentences)
 
+def _get_location_from_exif(file_path: str) -> tuple[Optional[float], Optional[float]]:
+    # Get lat and lon from exif
+    lat, lon = None, None
+    try:
+        with Image.open(file_path) as img:
+            exif = img.getexif()
+            if not exif:
+                raise Exception("no exif found for image")
+
+            if hasattr(exif, 'get_ifd'):
+                gps_ifd = exif.get_ifd(34853)
+                if gps_ifd:
+                    # Helper to safely convert EXIF fractions (rationals) to floats
+                    def parse_rational(val: Any) -> Optional[float]:
+                        if val is None: return None
+                        try:
+                            return float(val)
+                        except (ValueError, TypeError):
+                            if isinstance(val, tuple) and len(val) == 2:
+                                return float(val[0]) / float(val[1]) if val[1] != 0 else 0.0
+                            return None
+
+                    # 1. Base Coordinates (Lat/Lon)
+                    if 2 in gps_ifd and 4 in gps_ifd:
+                        lat_tuple = gps_ifd[2]
+                        lon_tuple = gps_ifd[4]
+
+                        lat = parse_rational(lat_tuple[0]) + (parse_rational(lat_tuple[1]) / 60.0) + (parse_rational(lat_tuple[2]) / 3600.0)
+                        if gps_ifd.get(1) == 'S': lat = -lat
+
+                        lon = parse_rational(lon_tuple[0]) + (parse_rational(lon_tuple[1]) / 60.0) + (parse_rational(lon_tuple[2]) / 3600.0)
+                        if gps_ifd.get(3) == 'W': lon = -lon
+
+    except Exception as e:
+        print(f"Warning: Could not read EXIF data for {os.path.basename(file_path)} - {e}")
+
+    return lat, lon
+
+# get location info
+def _add_location_to_prompt(base_prompt: str, file_path: str) -> str:
+    lat, lon = _get_location_from_exif(file_path)
+    if lat is None or lon is None:
+        return base_prompt
+
+    # Get a place name
+    zoom = 5 # 10 is city, 8 is state/county, 5 is state, 2 is country
+    location = geolocator.reverse(f"{lat}, {lon}", zoom=zoom, language="en")
+    if not location:
+        return base_prompt
+    place_name = location.address
+    print(f"Found location: {place_name}")
+
+    if not place_name:
+        return base_prompt
+
+    # return base_prompt + f"\nThe image was taken in {place_name}."
+    return f"""Describe this image, taken in {place_name}, using exactly two lines:
+1. A description of the main subject.
+2. A description of the background details and setting."""
+
+# ----- START THE TEST -----
+
 print(f"Starting {model} vision test...")
 
 for image_path in image_paths:
     start_time = time.time()
 
+    # It gets really verbose unless just using country level, and the country info doesn't change much
+    #prompt = _add_location_to_prompt(prompt, image_path)
+
     try:
         response = ollama.chat(
             model=model,
-            messages=[{
-                'role': 'user',
-                'content': prompt,
-                'images': [image_path]
-            }],
+            messages=[
+                # This system prompt doesn't seem all that helpful
+                # {
+                #     'role': 'system',
+                #     'content': 'You are a concise, factual photo captioner. You do not speculate.'
+                # },
+                {
+                    'role': 'user',
+                    'content': prompt,
+                    'images': [image_path]
+                }
+            ],
             options={
                 'num_thread': 4, # Restrict to 4 physical cores, seems necessary
                 'num_ctx': 1024, # Shrink the memory context window
@@ -105,7 +185,7 @@ for image_path in image_paths:
         elapsed_time = end_time - start_time
 
         #print(f"{response['message']['content']}")
-        caption = clean_llm_caption(response['message']['content'])
+        caption = _clean_llm_caption(response['message']['content'])
 
         print("\n--- Result ---")
         print(caption)
