@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * **Scale:** This is a personal project. It will primarily be used by me, functioning as the backend for a small tool on my personal website. Expect occasional, low-volume traffic (a few hits a day/week).
 * **Resource Constraints:** The production database runs on a strict free-tier plan. It must be protected from connection exhaustion, long-running queries, and large memory spikes.
 * **Priorities:**
-  * **Simplicity and developer ergonomics > Enterprise production readiness.**
+  * **Simplicity and developer ergonomics > Enterprise production readiness.** Maintain simplificity and ergonomics when making changes. If existing code/architecture complexity make changes difficult, suggest simplifications if possible.
   * **Architecture:** Avoid suggesting complex architectural patterns (e.g., microservices, message queues like Kafka/RabbitMQ, caching layers like Redis, or deep interface abstractions). Keep the stack strictly limited to Python, Postgres, and Go.
 * **Accuracy:** Documentation may be inconsistent or inaccurate. Ask for clarification when needed.
 
@@ -83,7 +83,7 @@ Schema defined in `db/init.sql`. Key tables:
 - `photos` — geotagged images with `caption TEXT` and `embedding vector(384)`
 - `trips` — top-level trip segments
 
-**Embedding dimension is 384 throughout** (model: `BAAI/bge-small-en-v1.5`). The Go server, pgvector schema, and Python ETL must all agree on this — `db/tests/test_embedding_dimension.py` enforces it.
+**Embedding dimension for `waypoints` and `photos` is 384** (model: `BAAI/bge-small-en-v1.5`). The Go server, pgvector schema, and Python ETL must all agree on this — `db/tests/test_embedding_dimension.py` enforces it. (`tracks` uses a different dimension; not currently used for search.)
 
 ### ETL scripts
 
@@ -91,7 +91,7 @@ Schema defined in `db/init.sql`. Key tables:
 - `db/populate_photos.py` — photo ingestion (in progress)
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
-- `scripts/describe_photos.py` — calls Google Gemini to generate photo captions
+- `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions
 - `scripts/obfuscate_points.py` — adds random geographic offset to sensitive coordinates before storing
 
 `db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings.
@@ -122,7 +122,7 @@ Go tests use the `integration` build tag and expect `DATABASE_URL` pointing at t
 
 ## Directory Structure
 Please respect the following separation of concerns:
-* `/etl/` - Python scripts for data extraction, transformation, and database population.
+* `/db/` - SQL schema, DB population scripts (`populate_*.py`), and related tests.
+* `/scripts/` - Data preparation scripts (photo captioning, waypoint description generation, coordinate obfuscation, etc.).
 * `/cmd/server` - Golang backend server code.
-* `/db/` - SQL migrations, schema definitions, and seed data.
 * `/docs/` - Any documentation.
