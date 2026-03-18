@@ -2,6 +2,39 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Philosophy & Scope
+* **Scale:** This is a personal project. It will primarily be used by me, functioning as the backend for a small tool on my personal website. Expect occasional, low-volume traffic (a few hits a day/week).
+* **Resource Constraints:** The production database runs on a strict free-tier plan. It must be protected from connection exhaustion, long-running queries, and large memory spikes.
+* **Priorities:**
+  * **Simplicity and developer ergonomics > Enterprise production readiness.**
+  * **Architecture:** Avoid suggesting complex architectural patterns (e.g., microservices, message queues like Kafka/RabbitMQ, caching layers like Redis, or deep interface abstractions). Keep the stack strictly limited to Python, Postgres, and Go.
+
+## Technology Stack & Conventions
+
+### 0. General Conventions
+* **Curb Over-engineering:** When writing Go code, prefer flat directory structures and simple functions over deeply nested domain-driven design (DDD). Do not create interfaces unless there are immediately at least two implementations.
+* **Error Handling:** For this scale, simple error logging is sufficient. Do not implement complex error wrapping, retry backoff mechanisms, or distributed tracing unless explicitly requested.
+
+### 1. Python (ETL & DB Scripts)
+* **Version:** Python 3.10.12
+* **Environment:** We use `pip` for dependency management. Requirements are in `requirements.txt` and `requirements-dev.txt`.
+* **Style Guidelines:**
+  * Follow PEP 8.
+  * Use Type Hints (`typing`) for all function signatures.
+  * Formatter & Linter: `ruff`
+
+### 2. PostgreSQL (Database)
+* **Version:** PostgreSQL 17
+* **Interaction:** The Go server has **READ-ONLY** access to the data. All data mutations and insertions are handled by the Python ETL scripts.
+* **Migrations:** Not currently supported.
+
+### 3. Golang (API Server)
+* **Version:** Go 1.25.7
+* **Style Guidelines:**
+  * Strict adherence to standard `gofmt`.
+  * Avoid global variables; use dependency injection for database connections and loggers.
+  * Handle errors explicitly (no silent failures).
+
 ## Commands
 
 ```bash
@@ -85,3 +118,10 @@ Tiny Python HTTP server. Used only in development to avoid Hugging Face API cost
 Requires a `.env` file with `DATABASE_URL`, `SERVER_ADDR`, `SITE_TOKEN`, and (for prod) `HUGGING_FACE_TOKEN`, `NEON_CONNECTION`, `CORS_ORIGINS`. Start order: `make start-db` → `make run-embedding` → `make run-server`.
 
 Go tests use the `integration` build tag and expect `DATABASE_URL` pointing at the local Docker DB.
+
+## Directory Structure
+Please respect the following separation of concerns:
+* `/etl/` - Python scripts for data extraction, transformation, and database population.
+* `/cmd/server` - Golang backend server code.
+* `/db/` - SQL migrations, schema definitions, and seed data.
+* `/docs/` - Any documentation.
