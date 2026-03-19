@@ -38,6 +38,14 @@ package main
 //     The second query is cheap: it only fetches photos for the 3 returned
 //     waypoints.
 //
+//   - Photo diversity: we fetch 10 candidate photos per waypoint but display
+//     only 5, selected via a greedy time-gap filter. This avoids returning
+//     near-duplicate photos taken minutes apart (e.g., 4 shots of the same
+//     grasshopper). The algorithm always picks the best semantic match first,
+//     then greedily fills remaining slots with the next-best match that is at
+//     least 2 days away from all already-selected photos. If the gap can't be
+//     met, it relaxes to pick the most temporally distant remaining candidate.
+//
 //   - The embedding fetch (local dev service or Hugging Face prod) lives here
 //     because search is its only consumer. If another endpoint ever needs
 //     embeddings, extract it then.
@@ -52,6 +60,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
@@ -69,6 +78,21 @@ const (
 	// topNPhotos is how many of the closest photos per waypoint are averaged
 	// to produce the photo score. See file header for rationale.
 	topNPhotos = 5
+
+	// candidatePhotos is how many photos to fetch per waypoint before
+	// diversification. We fetch more than we display so the diversity
+	// filter has room to skip near-duplicates.
+	candidatePhotos = 10
+
+	// displayPhotos is how many photos to return per waypoint after
+	// time-based diversification.
+	displayPhotos = 5
+
+	// photoDiversityGap is the minimum time gap between selected photos.
+	// Photos closer together than this are skipped in favor of more
+	// temporally diverse results. The greedy selector relaxes this when
+	// it can't fill all slots.
+	photoDiversityGap = 2 * 24 * time.Hour
 
 	// searchLimit is the maximum number of waypoints returned.
 	searchLimit = 3
@@ -99,11 +123,12 @@ type hybridSearchResult struct {
 
 // photoMatch is a single photo inside a waypoint search result.
 type photoMatch struct {
-	ID       int     `json:"id"`
-	Filename string  `json:"-"`
-	Caption  string  `json:"caption"`
-	Distance float64 `json:"distance"`
-	URL      string  `json:"url,omitempty"`
+	ID        int        `json:"id"`
+	Filename  string     `json:"-"`
+	Caption   string     `json:"caption"`
+	Distance  float64    `json:"distance"`
+	URL       string     `json:"url,omitempty"`
+	TimeTaken *time.Time `json:"-"`
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +230,8 @@ LIMIT $4
 // topPhotosSQL fetches the top-N closest photos for a set of waypoint IDs.
 // Called once after the main ranking query to populate the photos[] array in
 // each result. The set of IDs is tiny (at most searchLimit), so this is cheap.
+// We fetch candidatePhotos (more than we display) so the diversity filter has
+// room to work.
 const topPhotosSQL = `
 WITH ranked AS (
     SELECT
@@ -212,6 +239,7 @@ WITH ranked AS (
         p.id,
         p.filename,
         COALESCE(p.caption, '') AS caption,
+        p.time_taken,
         (p.embedding <=> $1) AS distance,
         ROW_NUMBER() OVER (
             PARTITION BY p.waypoint_id
@@ -221,7 +249,7 @@ WITH ranked AS (
     WHERE p.embedding IS NOT NULL
       AND p.waypoint_id = ANY($2)
 )
-SELECT waypoint_id, id, filename, caption, distance
+SELECT waypoint_id, id, filename, caption, time_taken, distance
 FROM ranked
 WHERE rn <= $3
 ORDER BY waypoint_id, distance
@@ -352,7 +380,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			for i, r := range rows {
 				wpIDs[i] = r.id
 			}
-			photoRows, err := pool.Query(r.Context(), topPhotosSQL, pgVec, wpIDs, topNPhotos)
+			photoRows, err := pool.Query(r.Context(), topPhotosSQL, pgVec, wpIDs, candidatePhotos)
 			if err != nil {
 				log.Printf("photo fetch error: %v", err)
 				// Non-fatal: we still return waypoints, just without photos.
@@ -361,16 +389,18 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 				for photoRows.Next() {
 					var wpID, photoID int
 					var filename, caption string
+					var timeTaken *time.Time
 					var dist float64
-					if err := photoRows.Scan(&wpID, &photoID, &filename, &caption, &dist); err != nil {
+					if err := photoRows.Scan(&wpID, &photoID, &filename, &caption, &timeTaken, &dist); err != nil {
 						log.Printf("photo scan error: %v", err)
 						break
 					}
 					photosByWaypoint[wpID] = append(photosByWaypoint[wpID], photoMatch{
-						ID:       photoID,
-						Filename: filename,
-						Caption:  caption,
-						Distance: sanitizeDistance(dist),
+						ID:        photoID,
+						Filename:  filename,
+						Caption:   caption,
+						Distance:  sanitizeDistance(dist),
+						TimeTaken: timeTaken,
 					})
 				}
 			}
@@ -406,7 +436,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			}
 
 			if mode != "description" {
-				photos := photosByWaypoint[row.id]
+				photos := diversifyPhotos(photosByWaypoint[row.id], displayPhotos, photoDiversityGap)
 				if photos == nil {
 					photos = []photoMatch{}
 				}
@@ -500,6 +530,87 @@ func fetchQueryEmbedding(ctx context.Context, query, env, embeddingServiceURL st
 	}
 
 	return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
+}
+
+// diversifyPhotos selects up to n photos from candidates (already sorted by
+// cosine distance, best first) that are spread apart in time. It always picks
+// the best match first, then greedily picks the next-best candidate whose
+// time_taken is at least minGap from every already-selected photo. If no
+// candidate meets the gap, it picks the one that maximizes the minimum time
+// distance to the already-selected set. Photos without a timestamp are always
+// eligible (treated as infinitely far from everything).
+func diversifyPhotos(candidates []photoMatch, n int, minGap time.Duration) []photoMatch {
+	if len(candidates) <= n {
+		return candidates
+	}
+
+	selected := make([]photoMatch, 0, n)
+	used := make([]bool, len(candidates))
+
+	// Always take the best match.
+	selected = append(selected, candidates[0])
+	used[0] = true
+
+	for len(selected) < n {
+		bestIdx := -1
+		bestMinDist := time.Duration(-1)
+
+		for i, c := range candidates {
+			if used[i] {
+				continue
+			}
+
+			gap := minTimeGap(c, selected)
+
+			// No timestamp → always eligible, pick first available.
+			if gap < 0 {
+				bestIdx = i
+				break
+			}
+
+			if gap >= minGap {
+				// Meets threshold — take the first one (best cosine distance).
+				bestIdx = i
+				break
+			}
+
+			// Track the candidate with the largest minimum gap as fallback.
+			if gap > bestMinDist {
+				bestMinDist = gap
+				bestIdx = i
+			}
+		}
+
+		if bestIdx < 0 {
+			break
+		}
+		selected = append(selected, candidates[bestIdx])
+		used[bestIdx] = true
+	}
+
+	return selected
+}
+
+// minTimeGap returns the smallest time distance between photo and any member
+// of selected. Returns -1 if photo has no timestamp (meaning "no constraint").
+func minTimeGap(photo photoMatch, selected []photoMatch) time.Duration {
+	if photo.TimeTaken == nil {
+		return -1
+	}
+	var minDist time.Duration = math.MaxInt64
+	for _, s := range selected {
+		if s.TimeTaken == nil {
+			continue
+		}
+		d := photo.TimeTaken.Sub(*s.TimeTaken)
+		if d < 0 {
+			d = -d
+		}
+		if d < minDist {
+			minDist = d
+		}
+	}
+	return minDist
 }
 
 // sanitizeDistance clamps a cosine distance to a safe range. This guards
