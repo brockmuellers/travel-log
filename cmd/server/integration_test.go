@@ -97,7 +97,7 @@ func TestIntegration_WaypointsSearch(t *testing.T) {
 	err := json.Unmarshal(body, &results)
 	assert.NoError(t, err, "decode search response")
 	for i, r := range results {
-		for _, key := range []string{"name", "description", "distance", "score", "description_distance", "photo_distance", "photos"} {
+		for _, key := range []string{"name", "description", "coordinates", "distance", "score", "description_distance", "photo_distance", "photos"} {
 			assert.Contains(t, r, key, "search result [%d] must have key %q", i, key)
 		}
 	}
@@ -130,6 +130,12 @@ func TestIntegration_WaypointsSearch_Modes(t *testing.T) {
 			assert.NotNil(t, r["description_distance"], "result [%d] description_distance should be set", i)
 			assert.Nil(t, r["photo_distance"], "result [%d] photo_distance should be nil in description mode", i)
 			assert.Nil(t, r["photos"], "result [%d] photos should be nil in description mode", i)
+			// coordinates should be a [lon, lat] array when present.
+			if coords, ok := r["coordinates"]; ok && coords != nil {
+				arr, ok := coords.([]interface{})
+				assert.True(t, ok, "result [%d] coordinates should be an array", i)
+				assert.Equal(t, 2, len(arr), "result [%d] coordinates should have exactly 2 elements [lon, lat]", i)
+			}
 		}
 	})
 

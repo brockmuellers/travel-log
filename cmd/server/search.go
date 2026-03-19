@@ -85,6 +85,7 @@ const (
 type hybridSearchResult struct {
 	Name                string       `json:"name"`
 	Description         string       `json:"description"`
+	Coordinates         *[2]float64  `json:"coordinates"`          // [lon, lat] (GeoJSON order); nil if no location
 	Distance            float64      `json:"distance"`             // the distance used for ranking
 	Score               float64      `json:"score"`                // 0–100, (1 - distance) * 100
 	DescriptionDistance *float64     `json:"description_distance"` // nil when mode=photo
@@ -107,7 +108,9 @@ type photoMatch struct {
 // descriptionSearchSQL ranks waypoints by cosine distance between the query
 // embedding and waypoints.embedding. This is the original search behavior.
 const descriptionSearchSQL = `
-SELECT id, name, COALESCE(description, '') AS description, (embedding <=> $1) AS distance
+SELECT id, name, COALESCE(description, '') AS description,
+       ST_X(location::geometry) AS lon, ST_Y(location::geometry) AS lat,
+       (embedding <=> $1) AS distance
 FROM waypoints
 WHERE embedding IS NOT NULL
 ORDER BY distance ASC
@@ -135,11 +138,13 @@ SELECT
     w.id,
     w.name,
     COALESCE(w.description, '') AS description,
+    ST_X(w.location::geometry) AS lon,
+    ST_Y(w.location::geometry) AS lat,
     AVG(rp.distance) AS photo_distance
 FROM ranked_photos rp
 JOIN waypoints w ON w.id = rp.waypoint_id
 WHERE rp.rn <= $2
-GROUP BY w.id, w.name, w.description
+GROUP BY w.id, w.name, w.description, w.location
 ORDER BY photo_distance ASC
 LIMIT $3
 `
@@ -174,6 +179,8 @@ SELECT
     w.id,
     w.name,
     COALESCE(w.description, '') AS description,
+    ST_X(w.location::geometry) AS lon,
+    ST_Y(w.location::geometry) AS lat,
     (w.embedding <=> $1) AS description_distance,
     pa.photo_distance,
     CASE
@@ -255,6 +262,8 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 			id          int
 			name        string
 			description string
+			lon         *float64 // from ST_X(location::geometry)
+			lat         *float64 // from ST_Y(location::geometry)
 			wpDist      *float64 // nil in photo-only mode
 			photoDist   *float64 // nil in description-only mode
 			distance    float64  // the distance used for final ranking
@@ -272,7 +281,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 			defer dbRows.Close()
 			for dbRows.Next() {
 				var row waypointRow
-				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.distance); err != nil {
+				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.lon, &row.lat, &row.distance); err != nil {
 					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
@@ -294,7 +303,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 			defer dbRows.Close()
 			for dbRows.Next() {
 				var row waypointRow
-				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.distance); err != nil {
+				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.lon, &row.lat, &row.distance); err != nil {
 					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
@@ -317,7 +326,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 			for dbRows.Next() {
 				var row waypointRow
 				var wpDist, photoDist *float64
-				if err := dbRows.Scan(&row.id, &row.name, &row.description, &wpDist, &photoDist, &row.distance); err != nil {
+				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.lon, &row.lat, &wpDist, &photoDist, &row.distance); err != nil {
 					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
@@ -376,6 +385,10 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				Description: row.description,
 				Distance:    dist,
 				Score:       score,
+			}
+
+			if row.lon != nil && row.lat != nil {
+				result.Coordinates = &[2]float64{*row.lon, *row.lat}
 			}
 
 			if row.wpDist != nil {
