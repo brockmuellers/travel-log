@@ -100,7 +100,7 @@ type hybridSearchResult struct {
 // photoMatch is a single photo inside a waypoint search result.
 type photoMatch struct {
 	ID       int     `json:"id"`
-	Filename string  `json:"filename"`
+	Filename string  `json:"-"`
 	Caption  string  `json:"caption"`
 	Distance float64 `json:"distance"`
 	URL      string  `json:"url,omitempty"`
