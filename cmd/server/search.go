@@ -229,7 +229,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
-			http.Error(w, `{"error":"missing query parameter q"}`, http.StatusBadRequest)
+			httpError(w, "missing query parameter q", http.StatusBadRequest, nil)
 			return
 		}
 
@@ -238,14 +238,13 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 			mode = "combined"
 		}
 		if mode != "description" && mode != "photo" && mode != "combined" {
-			http.Error(w, `{"error":"invalid mode: must be description, photo, or combined"}`, http.StatusBadRequest)
+			httpError(w, "invalid mode: must be description, photo, or combined", http.StatusBadRequest, nil)
 			return
 		}
 
 		vec, err := fetchQueryEmbedding(r.Context(), q, env, embeddingServiceURL)
 		if err != nil {
-			log.Printf("embedding error: %v", err)
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadGateway)
+			httpError(w, "embedding service error", http.StatusBadGateway, err)
 			return
 		}
 
@@ -267,14 +266,14 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 		case "description":
 			dbRows, err := pool.Query(r.Context(), descriptionSearchSQL, pgVec, searchLimit)
 			if err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 			defer dbRows.Close()
 			for dbRows.Next() {
 				var row waypointRow
 				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.distance); err != nil {
-					http.Error(w, `{"error":"database scan failed"}`, http.StatusInternalServerError)
+					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
 				d := row.distance
@@ -282,21 +281,21 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				rows = append(rows, row)
 			}
 			if err := dbRows.Err(); err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 
 		case "photo":
 			dbRows, err := pool.Query(r.Context(), photoSearchSQL, pgVec, topNPhotos, searchLimit)
 			if err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 			defer dbRows.Close()
 			for dbRows.Next() {
 				var row waypointRow
 				if err := dbRows.Scan(&row.id, &row.name, &row.description, &row.distance); err != nil {
-					http.Error(w, `{"error":"database scan failed"}`, http.StatusInternalServerError)
+					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
 				d := row.distance
@@ -304,14 +303,14 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				rows = append(rows, row)
 			}
 			if err := dbRows.Err(); err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 
 		case "combined":
 			dbRows, err := pool.Query(r.Context(), combinedSearchSQL, pgVec, topNPhotos, blendAlpha, searchLimit)
 			if err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 			defer dbRows.Close()
@@ -319,7 +318,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				var row waypointRow
 				var wpDist, photoDist *float64
 				if err := dbRows.Scan(&row.id, &row.name, &row.description, &wpDist, &photoDist, &row.distance); err != nil {
-					http.Error(w, `{"error":"database scan failed"}`, http.StatusInternalServerError)
+					httpError(w, "database scan failed", http.StatusInternalServerError, err)
 					return
 				}
 				row.wpDist = wpDist
@@ -327,7 +326,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				rows = append(rows, row)
 			}
 			if err := dbRows.Err(); err != nil {
-				http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
 			}
 		}

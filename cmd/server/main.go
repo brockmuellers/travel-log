@@ -157,12 +157,25 @@ func corsMiddleware(next http.Handler, allowedOriginsStr string) http.Handler {
 	})
 }
 
+// httpError logs the error and sends a JSON error response. Every error
+// returned to the client goes through this function so nothing is silently
+// swallowed. Pass nil for err when there is no underlying error (e.g. bad
+// user input).
+func httpError(w http.ResponseWriter, msg string, code int, err error) {
+	if err != nil {
+		log.Printf("HTTP %d: %s: %v", code, msg, err)
+	} else {
+		log.Printf("HTTP %d: %s", code, msg)
+	}
+	http.Error(w, `{"error":"`+msg+`"}`, code)
+}
+
 func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var count int
 		err := pool.QueryRow(r.Context(), "SELECT count(*) FROM waypoints").Scan(&count)
 		if err != nil {
-			http.Error(w, `{"error":"database query failed"}`, http.StatusInternalServerError)
+			httpError(w, "database query failed", http.StatusInternalServerError, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
