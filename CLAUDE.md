@@ -48,6 +48,8 @@ make deploy-db       # Copy local DB data to Neon (production)
 make test            # Run all Go and Python tests
 make test-go         # Go integration tests (requires local DB running)
 make test-python     # Python tests: db/tests/, embedding_service/tests/, scripts/tests/
+make prod-pause      # Activate Cloudflare pause worker (503 all prod API traffic)
+make prod-unpause    # Deactivate the pause worker
 ```
 
 Run a single Go test (requires local DB):

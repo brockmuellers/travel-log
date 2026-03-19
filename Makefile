@@ -1,5 +1,5 @@
 # Declare phony targets (targets that aren't actual files)
-.PHONY: help install-deps run-server run-embedding start-db reload-db deploy-db test-python test-go test
+.PHONY: help install-deps run-server run-embedding start-db reload-db deploy-db test-python test-go test prod-pause prod-unpause
 
 # Set shell to bash so I can use bash syntax
 SHELL := /bin/bash
@@ -16,6 +16,8 @@ help:
 	@echo "  make test-python    - Run all Python tests (db, embedding_service, scripts)"
 	@echo "  make test-go        - Run Go tests"
 	@echo "  make test           - Run both Go and Python tests"
+	@echo "  make prod-pause     - Activate the Cloudflare pause worker (503 all API traffic)"
+	@echo "  make prod-unpause   - Deactivate the Cloudflare pause worker"
 
 install-deps:
 	@echo "Installing Go dependencies..."
@@ -59,3 +61,25 @@ test-go:
 	go test  -tags=integration ./cmd/server/
 
 test: test-go test-python
+
+CF_ZONE_ID := 3830f92fa4dc590bb7719d0c2e021910
+CF_ROUTE_PATTERN := api.travel-log.brockmuellers.com/*
+CF_WORKER_NAME := pause-travel-log
+
+prod-pause:
+	@. .env && \
+	curl -sf -X POST "https://api.cloudflare.com/client/v4/zones/$(CF_ZONE_ID)/workers/routes" \
+		-H "Authorization: Bearer $$CLOUDFLARE_API_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d '{"pattern": "$(CF_ROUTE_PATTERN)", "script": "$(CF_WORKER_NAME)"}' | jq .
+	@echo "Pause worker activated on $(CF_ROUTE_PATTERN)"
+
+prod-unpause:
+	@. .env && \
+	ROUTE_ID=$$(curl -sf "https://api.cloudflare.com/client/v4/zones/$(CF_ZONE_ID)/workers/routes" \
+		-H "Authorization: Bearer $$CLOUDFLARE_API_TOKEN" | \
+		jq -r '.result[] | select(.pattern == "$(CF_ROUTE_PATTERN)" and .script == "$(CF_WORKER_NAME)") | .id') && \
+	if [ -z "$$ROUTE_ID" ]; then echo "No active pause route found."; exit 0; fi && \
+	curl -sf -X DELETE "https://api.cloudflare.com/client/v4/zones/$(CF_ZONE_ID)/workers/routes/$$ROUTE_ID" \
+		-H "Authorization: Bearer $$CLOUDFLARE_API_TOKEN" | jq . && \
+	echo "Pause worker deactivated."

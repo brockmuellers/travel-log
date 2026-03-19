@@ -59,3 +59,5 @@ Just normal go tests and pytest. Run with `make`.
 ### Local and remote environment
 
 Commands for running and deploying code are found in the `Makefile`. Sensitive environment variables are stored in normal `.env` files.
+
+A Cloudflare Worker in `cloudflare/pause-worker/` can intercept all prod API traffic with a 503 maintenance response — useful for staying within free-tier resource limits on the production database. Toggle it with `make prod-pause` and `make prod-unpause`.
