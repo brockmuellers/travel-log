@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS waypoints (
     start_time TIMESTAMPTZ, -- Use TIMESTAMPTZ for global travel!
     end_time TIMESTAMPTZ,
     location GEOGRAPHY(POINT, 4326),
+    location_public GEOGRAPHY(POINT, 4326), -- obfuscated for sensitive locations
     embedding vector(384) -- populated from the description
 );
 
@@ -66,13 +67,15 @@ CREATE TABLE IF NOT EXISTS photos (
     time_taken_local TIMESTAMP,
     time_taken_local_tz TEXT,
     location GEOGRAPHY(POINT, 4326),
+    location_public GEOGRAPHY(POINT, 4326), -- obfuscated for sensitive locations
     location_metadata JSONB,
     embedding vector(384) -- populated from the caption
 );
 
 -- TODO evaluate the necessity of these
 CREATE INDEX idx_trips_route ON trips USING GIST (route);
-CREATE INDEX idx_waypoints_loc ON waypoints USING GIST (location);
+CREATE INDEX idx_waypoints_loc_public ON waypoints USING GIST (location_public);
 CREATE INDEX idx_tracks_route ON tracks USING GIST (route);
+CREATE INDEX idx_photos_loc_public ON photos USING GIST (location_public);
 CREATE INDEX idx_points_loc ON track_points USING GIST (location);
 CREATE INDEX idx_points_time ON track_points (recorded_at);

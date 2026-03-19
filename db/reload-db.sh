@@ -11,4 +11,5 @@ sleep 5
 # Populate data
 python db/populate_waypoints.py && \
 python db/populate_photos.py && \
-python db/populate_embeddings.py
+python db/populate_embeddings.py && \
+python db/populate_public_locations.py

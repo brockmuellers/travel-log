@@ -114,7 +114,7 @@ type photoMatch struct {
 // embedding and waypoints.embedding. This is the original search behavior.
 const descriptionSearchSQL = `
 SELECT id, name, COALESCE(description, '') AS description,
-       ST_X(location::geometry) AS lon, ST_Y(location::geometry) AS lat,
+       ST_X(location_public::geometry) AS lon, ST_Y(location_public::geometry) AS lat,
        (embedding <=> $1) AS distance
 FROM waypoints
 WHERE embedding IS NOT NULL
@@ -143,13 +143,13 @@ SELECT
     w.id,
     w.name,
     COALESCE(w.description, '') AS description,
-    ST_X(w.location::geometry) AS lon,
-    ST_Y(w.location::geometry) AS lat,
+    ST_X(w.location_public::geometry) AS lon,
+    ST_Y(w.location_public::geometry) AS lat,
     AVG(rp.distance) AS photo_distance
 FROM ranked_photos rp
 JOIN waypoints w ON w.id = rp.waypoint_id
 WHERE rp.rn <= $2
-GROUP BY w.id, w.name, w.description, w.location
+GROUP BY w.id, w.name, w.description, w.location_public
 ORDER BY photo_distance ASC
 LIMIT $3
 `
@@ -184,8 +184,8 @@ SELECT
     w.id,
     w.name,
     COALESCE(w.description, '') AS description,
-    ST_X(w.location::geometry) AS lon,
-    ST_Y(w.location::geometry) AS lat,
+    ST_X(w.location_public::geometry) AS lon,
+    ST_Y(w.location_public::geometry) AS lat,
     (w.embedding <=> $1) AS description_distance,
     pa.photo_distance,
     CASE
