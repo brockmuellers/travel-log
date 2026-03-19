@@ -86,6 +86,8 @@ Schema defined in `db/init.sql`. Key tables:
 - `photos` — geotagged images with `caption TEXT` and `embedding vector(384)`
 - `trips` — top-level trip segments
 
+**Location obfuscation:** `waypoints` and `photos` each have both `location` (real) and `location_public` (obfuscated for sensitive locations, copied as-is for others). The Go server must only expose `location_public` — never `location`.
+
 **Embedding dimension for `waypoints` and `photos` is 384** (model: `BAAI/bge-small-en-v1.5`). The Go server, pgvector schema, and Python ETL must all agree on this — `db/tests/test_embedding_dimension.py` enforces it. (`tracks` uses a different dimension; not currently used for search.)
 
 ### ETL scripts
@@ -95,10 +97,11 @@ Schema defined in `db/init.sql`. Key tables:
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
 - `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions
-- `scripts/obfuscate_points.py` — adds random geographic offset to sensitive coordinates before storing
+- `db/populate_public_locations.py` — sets `location_public` on waypoints and photos; obfuscation logic duplicated from `scripts/obfuscate_points.py`
+- `scripts/obfuscate_points.py` — adds random geographic offset to sensitive coordinates in GPX files
 - `scripts/upload_photos.py` — uploads photos from `$PRIVATE_DATA_DIR/photos/` to Cloudflare R2; skips already-uploaded files
 
-`db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings.
+`db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings → populate_public_locations.
 
 ### Go server (`cmd/server/`)
 
