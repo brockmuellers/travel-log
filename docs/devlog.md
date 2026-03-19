@@ -117,3 +117,15 @@ I thought about reviewing the descriptions to identify potentially sensitive con
 Other than a few code improvements and tests, I've had a long break (working on another project + personal obligations). I'm focusing on documentation today.
 
 Thinking ahead to the future of this project - I started out this project not really knowing how LLMs would fit into it, but wanting to explore the space. Now that I understand their abilities and usage a little more, I think my ideal goal would be an agent that orchestrates tool calls, routing queries to the appropriate endpoints in my API and generating an answer from the responses. Exposing this to the public seems risky - I think I'd want a hardcoded password instead, as the easiest option. A more complex solution would be enforcing strict character limits in the chat box, forcing the LLM to do tool calls only to mitigate prompt injection, standard API request validation to avoid DDOS, and a captcha.
+
+2026-03-18
+
+Claude seems to be the preferred AI coding these days, and I'm not getting much utility out of cursor at this point (even though, conceptually, an IDE-integrated LLM seems ideal), so I'm trying it out. And it's fabulous. I'm wondering if the default models that Cursor uses are just sub-par. I also find the Claude CLI experience to be more pleasant, for some reason.
+
+I've been slowly working through getting photo descriptions, so I'm going to finally get semantic search working on those today. Claude is immensely helpful in speeding through this.
+
+2026-03-19
+
+I'm trying out photo hosting. It's pretty easy on R2. I'll admit I did zero research on that one - Claude suggested it and it was good enough for my needs and scale.
+
+With claude, I can blaze through all my little irritations and improvements - my cloudflare pause-api worker being hard to use for example, and photo/waypoint locations not being fully obfuscated. I'm sure there will be a downside.
