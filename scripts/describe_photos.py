@@ -153,7 +153,7 @@ def get_image_metadata(file_path: str) -> Dict[str, Any]:
     return metadata
 
 
-def generate_captions(image_dir: str, jsonl_path: str) -> None:
+def generate_captions(image_dir: str, jsonl_path: str, year_month: str) -> None:
     # Load existing progress if the file already exists
     processed_files: set[str] = set()
 
@@ -231,8 +231,9 @@ def generate_captions(image_dir: str, jsonl_path: str) -> None:
 
                 caption = clean_llm_caption(response.message.content)
 
+                long_filename = f"{year_month}/{filename}"
                 new_entry = {
-                    "filename": filename,
+                    "filename": long_filename,
                     "caption": caption,
                     "timestamp": metadata["timestamp"],
                     "location": metadata["location"],
@@ -289,7 +290,7 @@ def run(year_month: str) -> None:
     current_date = datetime.now().strftime("%Y-%m-%d")
     output_filename = f"captions_{year_month.replace('/', '-')}_{current_date}.jsonl"
     jsonl_path = os.path.join(output_dir, output_filename)
-    generate_captions(image_dir, jsonl_path)
+    generate_captions(image_dir, jsonl_path, year_month)
 
 
 if __name__ == "__main__":
