@@ -47,6 +47,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -453,13 +454,18 @@ func fetchQueryEmbedding(ctx context.Context, query, env, embeddingServiceURL st
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read embedding response body")
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedding service error (status %d)", resp.StatusCode)
+		return nil, fmt.Errorf("embedding service error (status %d): %s", resp.StatusCode, respBody)
 	}
 
 	var nested [][]float64
-	if err := json.NewDecoder(resp.Body).Decode(&nested); err != nil || len(nested) == 0 || len(nested[0]) != 384 {
-		return nil, fmt.Errorf("unexpected embedding dimension")
+	if err := json.Unmarshal(respBody, &nested); err != nil || len(nested) == 0 || len(nested[0]) != 384 {
+		return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
 	}
 
 	vec := make([]float32, len(nested[0]))
