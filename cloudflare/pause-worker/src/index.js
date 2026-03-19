@@ -1,6 +1,6 @@
 // To activate, link this worker to `api.travel-log.brockmuellers.com/*`
 // in cloudflare Domains -> Workers Routes.
-// Or toggle with `make prod-pause` / `make prod-unpause` from the repo root.
+// Toggle with `make prod-pause` / `make prod-unpause` from the repo root.
 export default {
   async fetch(request, env, ctx) {
     // Handle CORS preflight requests
