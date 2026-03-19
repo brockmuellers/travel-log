@@ -42,6 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make install-deps    # Install Go and Python dependencies (go mod tidy + pip)
 make run-server      # Run the Go server (requires DB and embedding service running)
 make run-embedding   # Run the Python embedding service
+make run-photos      # Serve local photos on port 8082 (for frontend dev, not required by this repo)
 make start-db        # Start the Docker Postgres container
 make reload-db       # Wipe and re-populate the local DB from scratch
 make deploy-db       # Copy local DB data to Neon (production)
@@ -95,12 +96,13 @@ Schema defined in `db/init.sql`. Key tables:
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
 - `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions
 - `scripts/obfuscate_points.py` — adds random geographic offset to sensitive coordinates before storing
+- `scripts/upload_photos.py` — uploads photos from `$PRIVATE_DATA_DIR/photos/` to Cloudflare R2; skips already-uploaded files
 
 `db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings.
 
 ### Go server (`cmd/server/`)
 
-Two files: `main.go` (routing, middleware, config) and `search.go` (hybrid search handler, embedding client, SQL queries).
+Two files: `main.go` (routing, middleware, config, R2 presigner) and `search.go` (hybrid search handler, embedding client, SQL queries).
 
 Endpoints:
 - `GET /health` — no auth
@@ -116,6 +118,8 @@ Auth: all non-health endpoints require `X-Site-Token` header matching `SITE_TOKE
 
 **Dev vs prod embedding**: `ENV=prod` calls Hugging Face Inference API directly; dev calls the local Python embedding service at `EMBEDDING_SERVICE_URL` (default `http://127.0.0.1:5001`). Both use the HF wire format. Code lives in `search.go:fetchQueryEmbedding`.
 
+**Photo URLs**: Search results include photo URLs. In prod, the R2 bucket is private and the server generates presigned URLs (1-hour expiry) using `R2_*` env vars. In dev, `PHOTO_BASE_URL` (e.g., `http://localhost:8082`) is prepended to the filename. Photos are uploaded to R2 via `scripts/upload_photos.py`.
+
 ### Embedding service (`embedding_service/main.py`)
 
 Tiny Python HTTP server. Used only in development to avoid Hugging Face API costs. The Go server can't run Python ML models directly, so this bridges the gap.
@@ -125,7 +129,7 @@ Tiny Python HTTP server. Used only in development to avoid Hugging Face API cost
 
 ### Local dev setup
 
-Requires a `.env` file with `DATABASE_URL`, `SERVER_ADDR`, `SITE_TOKEN`, and (for prod) `HUGGING_FACE_TOKEN`, `NEON_CONNECTION`, `CORS_ORIGINS`. Start order: `make start-db` → `make run-embedding` → `make run-server`.
+Requires a `.env` file with `DATABASE_URL`, `SERVER_ADDR`, `SITE_TOKEN`, `PRIVATE_DATA_DIR`, `PHOTO_BASE_URL`, and (for prod) `HUGGING_FACE_TOKEN`, `NEON_CONNECTION`, `CORS_ORIGINS`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. Start order: `make start-db` → `make run-embedding` → `make run-server`. Optionally `make run-photos` to serve photos for the local frontend.
 
 Go tests use the `integration` build tag and expect `DATABASE_URL` pointing at the local Docker DB.
 

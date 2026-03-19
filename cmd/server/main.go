@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -66,12 +70,25 @@ func main() {
 		log.Fatal("SITE_TOKEN must be set in environment (.env)")
 	}
 
+	var presigner *r2Presigner
+	if r2AccountID := os.Getenv("R2_ACCOUNT_ID"); r2AccountID != "" {
+		presigner = newR2Presigner(
+			r2AccountID,
+			os.Getenv("R2_ACCESS_KEY_ID"),
+			os.Getenv("R2_SECRET_ACCESS_KEY"),
+			os.Getenv("R2_BUCKET_NAME"),
+		)
+		log.Printf("R2 presigner configured (bucket: %s)", os.Getenv("R2_BUCKET_NAME"))
+	}
+
 	handler := NewHandler(ServerConfig{
 		Pool:                pool,
 		Env:                 env,
 		EmbeddingServiceURL: embeddingServiceURL,
 		SiteToken:           siteToken,
 		CORSOrigins:         os.Getenv("CORS_ORIGINS"),
+		R2Presigner:         presigner,
+		PhotoBaseURL:        os.Getenv("PHOTO_BASE_URL"),
 	})
 
 	log.Printf("listening on %s", serverAddr)
@@ -87,6 +104,49 @@ type ServerConfig struct {
 	EmbeddingServiceURL  string
 	SiteToken            string
 	CORSOrigins          string
+	R2Presigner          *r2Presigner
+	PhotoBaseURL         string
+}
+
+// r2Presigner generates time-limited presigned URLs for objects in an R2 bucket.
+//
+// The R2 bucket is kept private (no public access). Instead of exposing a public
+// URL that bots could scrape (racking up Class B read operations against the free
+// tier), the Go server mints short-lived presigned URLs on demand. Since every
+// non-health endpoint already requires X-Site-Token auth, only legitimate frontend
+// requests can obtain photo URLs, and each URL expires after presignedURLExpiry.
+// This avoids needing Cloudflare WAF/rate-limit rules or a custom domain in front
+// of the bucket.
+type r2Presigner struct {
+	client *s3.PresignClient
+	bucket string
+}
+
+// presignedURLExpiry is how long presigned photo URLs remain valid.
+const presignedURLExpiry = 1 * time.Hour
+
+func newR2Presigner(accountID, accessKeyID, secretAccessKey, bucket string) *r2Presigner {
+	s3Client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://" + accountID + ".r2.cloudflarestorage.com"),
+		Region:       "auto",
+		Credentials:  credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+	})
+	return &r2Presigner{
+		client: s3.NewPresignClient(s3Client),
+		bucket: bucket,
+	}
+}
+
+// URL returns a presigned GET URL for the given object key, valid for presignedURLExpiry.
+func (p *r2Presigner) URL(ctx context.Context, key string) (string, error) {
+	result, err := p.client.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: &p.bucket,
+		Key:    &key,
+	}, s3.WithPresignExpires(presignedURLExpiry))
+	if err != nil {
+		return "", err
+	}
+	return result.URL, nil
 }
 
 // NewHandler builds the HTTP handler from config. Used by main and integration tests.
@@ -94,7 +154,7 @@ func NewHandler(cfg ServerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(cfg.Pool))
-	mux.HandleFunc("GET /waypoints/search", waypointsSearchHybrid(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL))
+	mux.HandleFunc("GET /waypoints/search", waypointsSearchHybrid(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL, cfg.R2Presigner, cfg.PhotoBaseURL))
 
 	noAuthPaths := []string{"/health"}
 	handler := requireSiteToken(cfg.SiteToken, mux, noAuthPaths)

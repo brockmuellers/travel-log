@@ -61,3 +61,11 @@ Just normal go tests and pytest. Run with `make`.
 Commands for running and deploying code are found in the `Makefile`. Sensitive environment variables are stored in normal `.env` files.
 
 A Cloudflare Worker in `cloudflare/pause-worker/` can intercept all prod API traffic with a 503 maintenance response — useful for staying within free-tier resource limits on the production database. Toggle it with `make prod-pause` and `make prod-unpause`.
+
+### Photo storage
+
+Photos are stored in a private Cloudflare R2 bucket. The Go server generates presigned URLs (1-hour expiry) so the frontend can fetch images directly from R2 without the bucket being publicly accessible. This avoids bot scraping and keeps R2 usage within the free tier.
+
+Locally, `make run-photos` serves photos from `$PRIVATE_DATA_DIR/photos/` on port 8082 for the frontend. The Go server uses `PHOTO_BASE_URL` to construct local URLs instead of presigning.
+
+Upload photos to R2 with `python scripts/upload_photos.py` (requires `R2_*` env vars in `.env`).

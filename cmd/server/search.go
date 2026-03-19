@@ -103,6 +103,7 @@ type photoMatch struct {
 	Filename string  `json:"filename"`
 	Caption  string  `json:"caption"`
 	Distance float64 `json:"distance"`
+	URL      string  `json:"url,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +237,7 @@ ORDER BY waypoint_id, distance
 // Query parameters:
 //   - q (required): the search query text
 //   - mode (optional): "description", "photo", or "combined" (default)
-func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) http.HandlerFunc {
+func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, presigner *r2Presigner, photoBaseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
@@ -408,6 +409,18 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string) 
 				photos := photosByWaypoint[row.id]
 				if photos == nil {
 					photos = []photoMatch{}
+				}
+				for i := range photos {
+					if presigner != nil {
+						url, err := presigner.URL(r.Context(), photos[i].Filename)
+						if err != nil {
+							log.Printf("presign error for %s: %v", photos[i].Filename, err)
+							continue
+						}
+						photos[i].URL = url
+					} else if photoBaseURL != "" {
+						photos[i].URL = photoBaseURL + "/" + photos[i].Filename
+					}
 				}
 				result.Photos = photos
 			}
