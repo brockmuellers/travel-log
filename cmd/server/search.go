@@ -73,6 +73,9 @@ const (
 	// searchLimit is the maximum number of waypoints returned.
 	searchLimit = 3
 
+	// embeddingDim is the expected vector dimension (BAAI/bge-small-en-v1.5).
+	embeddingDim = 384
+
 	// hfEmbeddingModel is the Hugging Face Inference API endpoint used in prod.
 	hfEmbeddingModel = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5/pipeline/feature-extraction"
 )
@@ -463,16 +466,27 @@ func fetchQueryEmbedding(ctx context.Context, query, env, embeddingServiceURL st
 		return nil, fmt.Errorf("embedding service error (status %d): %s", resp.StatusCode, respBody)
 	}
 
-	var nested [][]float64
-	if err := json.Unmarshal(respBody, &nested); err != nil || len(nested) == 0 || len(nested[0]) != 384 {
-		return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
+	// HF API originally returned [[384 floats]] (nested) but appears to have
+	// changed to [384 floats] (flat). We support both to be safe.
+	var flat []float64
+	if err := json.Unmarshal(respBody, &flat); err == nil && len(flat) == embeddingDim {
+		vec := make([]float32, len(flat))
+		for i, v := range flat {
+			vec[i] = float32(v)
+		}
+		return vec, nil
 	}
 
-	vec := make([]float32, len(nested[0]))
-	for i, v := range nested[0] {
-		vec[i] = float32(v)
+	var nested [][]float64
+	if err := json.Unmarshal(respBody, &nested); err == nil && len(nested) > 0 && len(nested[0]) == embeddingDim {
+		vec := make([]float32, len(nested[0]))
+		for i, v := range nested[0] {
+			vec[i] = float32(v)
+		}
+		return vec, nil
 	}
-	return vec, nil
+
+	return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
 }
 
 // sanitizeDistance clamps a cosine distance to a safe range. This guards
