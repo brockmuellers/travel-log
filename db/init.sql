@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS trips (
     name TEXT UNIQUE NOT NULL,
     start_date DATE,
     end_date DATE,
+    source TEXT, -- 'findpenguins' or 'manual'
     route GEOGRAPHY(MultiLineString, 4326), -- SRID 4326 is standard GPS lat/lon
     embedding vector(1536)
 );

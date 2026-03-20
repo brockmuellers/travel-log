@@ -8,7 +8,6 @@
 	* Color map lines
 
 **Medium:**
-* Explore different embeddings
 * Build waypoint summaries from all data embeddings
 * Simple "near here" map click search to take advantage of location indexes
 
@@ -19,6 +18,7 @@
 * Map legend
 * Filter waypoint search by selected "trip" tab
 * Display clickable waypoints on map
+* Explore different embeddings
 
 ### Internal
 
@@ -36,11 +36,9 @@
 * Finish privacy-screening photos
 
 **Medium:**
-* Create "waypoints" for the places in between trips, so photos are linked correctly
 * Smarter photo-to-waypoint linking for travel days
 * Explore better data flows, especially regarding location privacy
-
-### Documentation
+* A few photos don't have time_taken - missing from exif?
 
 
 ### Infrastructure

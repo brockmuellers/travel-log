@@ -191,10 +191,10 @@ def run_findpenguins_gpx_etl(
     print(f"Inserting Trip {trip_name}...")
     cur.execute(
         """
-        INSERT INTO trips (name, start_date, end_date)
-        VALUES (%s, %s, %s) RETURNING id
+        INSERT INTO trips (name, start_date, end_date, source)
+        VALUES (%s, %s, %s, %s) RETURNING id
     """,
-        (trip_name, waypoints[0]["time"], waypoints[-1]["time"]),
+        (trip_name, waypoints[0]["time"], waypoints[-1]["time"], "findpenguins"),
     )
     trip_id = cur.fetchone()[0]
 
@@ -313,6 +313,183 @@ def run_findpenguins_gpx_etl(
     conn.commit()
 
 
+def run_manual_trips_etl(
+    conn: psycopg2.extensions.connection, json_path: str | Path
+) -> None:
+    """Import manual trips from JSON to fill gaps between FindPenguins trips.
+
+    Expected JSON schema (list of trips):
+    [
+      {
+        "name": "Trip Name",
+        "waypoints": [
+          {
+            "name": "City",
+            "lat": 37.77,
+            "lon": -122.42,
+            "start_time": "2024-07-15T00:00:00Z",
+            "end_time": "2024-07-20T00:00:00Z",  // optional
+            "track_to_here": [                     // optional, omit for first wp
+              {"lat": 37.77, "lon": -122.42},
+              {"lat": 40.0, "lon": -122.5, "transport": "car"},  // transport ignored
+              {"lat": 45.52, "lon": -122.68}
+            ]
+          }
+        ]
+      }
+    ]
+    """
+    json_path = Path(json_path)
+    if not json_path.exists():
+        raise FileNotFoundError(f"Manual trips file not found at {json_path}")
+
+    with open(json_path, "r") as f:
+        manual_trips = json.load(f)
+
+    if not manual_trips:
+        print("No manual trips to import.")
+        return
+
+    cur = conn.cursor()
+    try:
+        # Get existing FP trips ordered by start_date
+        cur.execute(
+            "SELECT id, start_date, end_date FROM trips WHERE source = 'findpenguins' ORDER BY start_date"
+        )
+        fp_trips = cur.fetchall()
+
+        expected_count = len(fp_trips) + 1
+        if len(manual_trips) != expected_count:
+            raise ValueError(
+                f"Expected {expected_count} manual trips for {len(fp_trips)} FP trips, "
+                f"got {len(manual_trips)}"
+            )
+
+        for i, mt in enumerate(manual_trips):
+            # Determine trip start/end dates from FP trip boundaries
+            start_date = fp_trips[i - 1][2] if i > 0 else None
+            end_date = fp_trips[i][1] if i < len(fp_trips) else None
+
+            cur.execute(
+                """
+                INSERT INTO trips (name, start_date, end_date, source)
+                VALUES (%s, %s, %s, %s) RETURNING id
+                """,
+                (mt["name"], start_date, end_date, "manual"),
+            )
+            trip_id = cur.fetchone()[0]
+            print(f"Inserted manual trip: {mt['name']} (id={trip_id})")
+
+            # Backfill end_time on the last FP waypoint from the preceding trip.
+            # FP trips always leave their final waypoint with end_time=NULL.
+            waypoints = mt["waypoints"]
+            if i > 0 and waypoints:
+                first_manual_start = waypoints[0]["start_time"]
+                fp_trip_id = fp_trips[i - 1][0]
+                cur.execute(
+                    """
+                    UPDATE waypoints
+                    SET end_time = %s
+                    WHERE trip_id = %s AND end_time IS NULL
+                    """,
+                    (first_manual_start, fp_trip_id),
+                )
+                updated = cur.rowcount
+                if updated:
+                    print(f"  Backfilled end_time on {updated} FP waypoint(s) from trip {fp_trip_id}")
+
+            wp_ids: list[int] = []
+
+            for j, wp in enumerate(waypoints):
+                # Use explicit end_time if provided, else next wp's start_time, else trip end_date
+                end_time = wp.get("end_time")
+                if end_time is None:
+                    if j < len(waypoints) - 1:
+                        end_time = waypoints[j + 1]["start_time"]
+                    else:
+                        end_time = end_date
+
+                cur.execute(
+                    """
+                    INSERT INTO waypoints (trip_id, name, start_time, end_time, location)
+                    VALUES (%s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326))
+                    RETURNING id
+                    """,
+                    (trip_id, wp["name"], wp["start_time"], end_time, wp["lon"], wp["lat"]),
+                )
+                wp_id = cur.fetchone()[0]
+                wp_ids.append(wp_id)
+
+            # Insert tracks and track points
+            for j, wp in enumerate(waypoints):
+                track_points = wp.get("track_to_here")
+                if not track_points or j == 0:
+                    continue
+
+                # Build LINESTRING
+                coords = ", ".join(
+                    f"{p['lon']} {p['lat']}" for p in track_points
+                )
+                if len(track_points) < 2:
+                    p = track_points[0]
+                    wkt = f"LINESTRING({p['lon']} {p['lat']}, {p['lon']} {p['lat']})"
+                else:
+                    wkt = f"LINESTRING({coords})"
+
+                prev_wp = waypoints[j - 1]
+                cur.execute(
+                    """
+                    INSERT INTO tracks
+                    (trip_id, start_waypoint_id, end_waypoint_id, source, start_time, end_time_incl, route)
+                    VALUES (%s, %s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326))
+                    RETURNING id
+                    """,
+                    (
+                        trip_id,
+                        wp_ids[j - 1],
+                        wp_ids[j],
+                        "manual",
+                        prev_wp["start_time"],
+                        wp["start_time"],
+                        wkt,
+                    ),
+                )
+                track_id = cur.fetchone()[0]
+
+                # Hydrate elevation and insert track points
+                for p in track_points:
+                    try:
+                        with contextlib.redirect_stdout(open(os.devnull, "w")):
+                            p["ele"] = elevation_data.get_elevation(p["lat"], p["lon"])
+                    except Exception as e:
+                        print(f"failed to load elevation: {e}")
+                        p["ele"] = None
+
+                db_points = [
+                    (track_id, wp["start_time"], p["lon"], p["lat"], p.get("ele"))
+                    for p in track_points
+                ]
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO track_points (track_id, recorded_at, location, elevation_meters)
+                    VALUES %s
+                    """,
+                    db_points,
+                    template="(%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s)",
+                )
+
+        conn.commit()
+        print(f"SUCCESS: Imported {len(manual_trips)} manual trips.")
+
+    except Exception:
+        conn.rollback()
+        print("TRANSACTION ROLLED BACK (manual trips).")
+        raise
+    finally:
+        cur.close()
+
+
 if __name__ == "__main__":
     load_dotenv()
 
@@ -345,6 +522,10 @@ if __name__ == "__main__":
             connection.close()
             print("Failed to process")
             raise
+
+    # Populate manual trips (gap-filling between FP trips)
+    manual_trips_path = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "manual", "trips.json")
+    run_manual_trips_etl(connection, manual_trips_path)
 
     # Populate waypoint descriptions
     # If there are multiple files for the same trip, with different models,

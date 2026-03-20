@@ -84,7 +84,7 @@ Schema defined in `db/init.sql`. Key tables:
 - `waypoints` — major stops; has `description TEXT` and `embedding vector(384)`
 - `tracks` / `track_points` — GPS geometry between waypoints (PostGIS LINESTRING / POINT, SRID 4326)
 - `photos` — geotagged images with `caption TEXT` and `embedding vector(384)`
-- `trips` — top-level trip segments
+- `trips` — top-level trip segments; `source TEXT` is `'findpenguins'` or `'manual'`
 
 **Location obfuscation:** `waypoints` and `photos` each have both `location` (real) and `location_public` (obfuscated for sensitive locations, copied as-is for others). The Go server must only expose `location_public` — never `location`.
 
@@ -92,7 +92,7 @@ Schema defined in `db/init.sql`. Key tables:
 
 ### ETL scripts
 
-- `db/populate_waypoints.py` — parses FindPenguins GPX, fetches SRTM elevation, loads waypoints/tracks/track_points
+- `db/populate_waypoints.py` — parses FindPenguins GPX + manual trips JSON (`data/private/manual/trips.json`), fetches SRTM elevation, loads waypoints/tracks/track_points
 - `db/populate_photos.py` — photo metadata ingestion
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
