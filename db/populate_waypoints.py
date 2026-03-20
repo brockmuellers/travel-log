@@ -20,6 +20,13 @@ elevation_data = srtm.get_data()
 NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
 
 
+def _first_waypoint_time(path: Path) -> str:
+    """Return the timestamp of the first waypoint in a GPX file (for sorting)."""
+    tree = ET.parse(path)
+    root = tree.getroot()
+    return root.find("gpx:wpt", NS).find("gpx:time", NS).text
+
+
 def _strip_nul(s: str | None) -> str | None:
     """Remove NUL (0x00) characters. PostgreSQL and some libs reject them."""
     if s is None:
@@ -326,7 +333,7 @@ if __name__ == "__main__":
     # Populate waypoints from GPX
     # NOTE: USING RAW UN-OBFUSCATED GPX FILES FOR NOW
     gpx_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "findpenguins")
-    waypoint_files_list = list(Path(gpx_dir).glob("*.gpx"))
+    waypoint_files_list = sorted(Path(gpx_dir).glob("*.gpx"), key=_first_waypoint_time)
 
     print(f"Importing {len(waypoint_files_list)} files")
     for f in waypoint_files_list:
