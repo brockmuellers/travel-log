@@ -91,14 +91,16 @@ def process_gpx(
             lat = config["lat"]
             lon = config["lon"]
 
-            # Calculate the random "fake" location immediately
             rng = random.Random(config["seed"])
 
             dist = config["radius"]
+            # Randomize distance between 75%-100% of radius to guarantee meaningful
+            # displacement while avoiding a predictable exact-radius displacement.
+            random_distance = rng.uniform(dist * 0.75, dist)
             random_bearing = rng.uniform(0, 360)
 
             new_lat, new_lon = calculate_destination_point(
-                lat, lon, rng.uniform(0, dist), rng.uniform(0, 360)
+                lat, lon, random_distance, random_bearing
             )
 
             # Register this as a sensitive zone
@@ -107,7 +109,7 @@ def process_gpx(
                 "radius": dist,
             }
             print(
-                f"  [Ghost Point] '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°"
+                f"  [Ghost Point] '{name}': Moved {random_distance:.2f}km @ {random_bearing:.0f}°"
             )
 
     # 1. Process Waypoints (<wpt>)
@@ -126,10 +128,13 @@ def process_gpx(
             rng = random.Random(config["seed"])
 
             dist = config["radius"]
+            # Randomize distance between 75%-100% of radius to guarantee meaningful
+            # displacement while avoiding a predictable exact-radius displacement.
+            random_distance = rng.uniform(dist * 0.75, dist)
             random_bearing = rng.uniform(0, 360)
 
             new_lat, new_lon = calculate_destination_point(
-                lat, lon, dist, random_bearing
+                lat, lon, random_distance, random_bearing
             )
 
             # Update the waypoint in the GPX
@@ -142,7 +147,7 @@ def process_gpx(
                 "radius": dist,
             }
 
-            print(f"  Obfuscating '{name}': Moved {dist:.2f}km @ {random_bearing:.0f}°")
+            print(f"  Obfuscating '{name}': Moved {random_distance:.2f}km @ {random_bearing:.0f}°")
 
     # 2. Process Tracks (<trk>)
     count_deleted = 0
