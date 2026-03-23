@@ -14,7 +14,7 @@
 ### Product Improvements
 
 **Medium:**
-* Improve copy on waypoint search (what can you search for and what do results mean)
+* Improve copy on waypoint search (what can you search for and what do results mean, as well as "first search may take a while...")
 * Map legend
 * Filter waypoint search by selected "trip" tab
 * Display clickable waypoints on map
@@ -27,17 +27,18 @@
 * Explore moving frontend logic to travel repo (source as link, or copy with gh actions, or other?)
 * Set up a local test DB
 * Python tests for data transformation (and maybe full integration test?)
+* Explore further Claude configuration
 
 ### Data
 
 **High:**
 * Fix track in Japan and Vietnam
 * Fix Vietnamese waypoint name with special characters (and find any others?)
+* Fill in beginning waypoints for West Coast trip (update trips.json too)
 * Finish privacy-screening photos
-
-**Medium:**
 * Smarter photo-to-waypoint linking for travel days
-* Explore better data flows, especially regarding location privacy
+
+**Low:**
 * A few photos don't have time_taken - missing from exif?
 
 

@@ -129,3 +129,7 @@ I've been slowly working through getting photo descriptions, so I'm going to fin
 I'm trying out photo hosting. It's pretty easy on R2. I'll admit I did zero research on that one - Claude suggested it and it was good enough for my needs and scale.
 
 With claude, I can blaze through all my little irritations and improvements - my cloudflare pause-api worker being hard to use for example, and photo/waypoint locations not being fully obfuscated. I'm sure there will be a downside.
+
+2026-03-20
+
+Not all photos are getting assigned, so I need some manual "trips" to get those waypoints that are not part of one of my official findpenguins trips.
