@@ -17,8 +17,8 @@ ET.register_namespace("", NS["gpx"])
 
 
 def process_gpx(
-    input_file: str | Path, output_file: str | Path, sensitive_config: dict[str, Any]
-) -> bool:
+    input_file: str | Path, sensitive_config: dict[str, Any]
+) -> ET.Element:
     print(f"Reading GPX: {input_file}")
     tree = ET.parse(input_file)
     root = tree.getroot()
@@ -136,12 +136,71 @@ def process_gpx(
             # Rebuild the segment with only kept points
             trkseg[:] = points_to_keep
 
-    tree.write(output_file, encoding="UTF-8", xml_declaration=True)
     print("Processing complete.")
     print(f"  - Track points moved: {count_moved}")
     print(f"  - Track points deleted: {count_deleted}")
-    print(f"  - Saved to: {output_file}")
-    return True
+    return root
+
+
+def _get_transport_mode(trkpt: ET.Element) -> str | None:
+    """Extract transport mode from <extension><transport>, or None if absent."""
+    ext = trkpt.find("gpx:extension/gpx:transport", NS)
+    if ext is not None and ext.text:
+        return ext.text
+    return None
+
+
+def gpx_to_geojson(root: ET.Element) -> dict:
+    """
+    Convert a GPX track to a GeoJSON FeatureCollection segmented by transport mode.
+
+    Each feature is a LineString representing a continuous run of track points sharing
+    the same transport mode. The transition point between two runs is duplicated so that
+    adjacent LineStrings connect seamlessly on the map. Points with no transport tag
+    (e.g. waypoint-arrival points) form their own short segment with transport=null.
+
+    Each <trkseg> is processed independently.
+    """
+    features = []
+
+    for trk in root.findall("gpx:trk", NS):
+        for trkseg in trk.findall("gpx:trkseg", NS):
+            points = trkseg.findall("gpx:trkpt", NS)
+            if not points:
+                continue
+
+            runs: list[tuple[str | None, list[list[float]]]] = []
+            current_mode: str | None = None
+            current_coords: list[list[float]] = []
+
+            for pt in points:
+                lat = float(pt.get("lat"))
+                lon = float(pt.get("lon"))
+                mode = _get_transport_mode(pt)  # None if no transport tag
+
+                if mode != current_mode:
+                    if current_coords:
+                        runs.append((current_mode, current_coords))
+                        # Share the transition point so adjacent LineStrings connect
+                        current_coords = [current_coords[-1]]
+                    current_mode = mode
+
+                current_coords.append([lon, lat])
+
+            if current_coords:
+                runs.append((current_mode, current_coords))
+
+            for mode, coords in runs:
+                if len(coords) >= 2:
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "LineString", "coordinates": coords},
+                            "properties": {"transport": mode},
+                        }
+                    )
+
+    return {"type": "FeatureCollection", "features": features}
 
 
 @click.command()
@@ -160,15 +219,15 @@ def process_gpx(
     "--deploy-path",
     type=click.Path(path_type=str),
     default=None,
-    help='Folder to copy output GPX to for deployment. Default: DEPLOY_TARGET/gpx. Pass "" to disable.',
+    help='Folder to copy output files to for deployment. Default: DEPLOY_TARGET/gpx. Pass "" to disable.',
 )
 def run(input_gpx: str, waypoints: str | None, deploy_path: str | None) -> None:
     """
-    Obfuscate sensitive waypoints in a GPX file.
+    Obfuscate sensitive waypoints in a GPX file and generate a transport-segmented GeoJSON.
 
-    Moves each configured waypoint to a seeded random location that is a given radius (km) away
-    and removes nearby track points. Input can be a single GPX file or a directory (processes
-    all *.gpx files). Output is written to FINAL_DATA_DIR.
+    Obfuscates coordinates in memory (no GPX file written) and outputs a .geojson file where
+    the track is split into LineString features by transport mode. Input can be a single GPX
+    file or a directory (processes all *.gpx files). Output is written to FINAL_DATA_DIR.
 
     Waypoints config JSON example:
       [
@@ -207,13 +266,20 @@ def run(input_gpx: str, waypoints: str | None, deploy_path: str | None) -> None:
 
     for gpx_path in inputs:
         print(f"Processing file {gpx_path}")
-        output = os.path.join(default_output_path, os.path.basename(gpx_path))
-        success = process_gpx(gpx_path, output, config)
+        stem = Path(gpx_path).stem
+        geojson_output = os.path.join(default_output_path, stem + ".geojson")
 
-        if success and deploy_path:
+        root = process_gpx(gpx_path, config)
+
+        geojson = gpx_to_geojson(root)
+        with open(geojson_output, "w", encoding="utf-8") as f:
+            json.dump(geojson, f, indent=2)
+        print(f"  - GeoJSON saved to: {geojson_output} ({len(geojson['features'])} features)")
+
+        if deploy_path:
             try:
-                shutil.copy(output, deploy_path)
-                print(f"  [SUCCESS] Copied {output} -> {deploy_path}")
+                shutil.copy(geojson_output, deploy_path)
+                print(f"  [SUCCESS] Copied {geojson_output} -> {deploy_path}")
             except Exception as e:
                 raise SystemExit(f"  [ERROR] Copy failed: {e}")
 

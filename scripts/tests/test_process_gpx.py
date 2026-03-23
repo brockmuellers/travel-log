@@ -1,11 +1,11 @@
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import tempfile
 
 import pytest
 
 from scripts.gps_utils import calculate_destination_point, haversine_distance
-from scripts.obfuscate_points import process_gpx
+from scripts.process_gpx import gpx_to_geojson, process_gpx
 
 NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
 
@@ -13,14 +13,19 @@ NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
 
 
 def make_gpx(waypoints: list[dict], track_points: list[dict]) -> str:
-    """Build a minimal GPX 1.1 XML string."""
+    """Build a minimal GPX 1.1 XML string.
+
+    Each track_point dict has "lat", "lon", and optionally "transport".
+    """
     wpt_tags = ""
     for w in waypoints:
         wpt_tags += f'  <wpt lat="{w["lat"]}" lon="{w["lon"]}"><name>{w["name"]}</name></wpt>\n'
 
     trkpt_tags = ""
     for p in track_points:
-        trkpt_tags += f'    <trkpt lat="{p["lat"]}" lon="{p["lon"]}"/>\n'
+        transport = p.get("transport")
+        ext = f"<extension><transport>{transport}</transport></extension>" if transport else ""
+        trkpt_tags += f'    <trkpt lat="{p["lat"]}" lon="{p["lon"]}">{ext}</trkpt>\n'
 
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -34,14 +39,11 @@ def make_gpx(waypoints: list[dict], track_points: list[dict]) -> str:
 
 
 def run_process_gpx(gpx_content: str, config: dict) -> ET.Element:
-    """Write gpx_content to a temp file, run process_gpx, return parsed output root."""
+    """Write gpx_content to a temp file, run process_gpx, return the modified root."""
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = Path(tmpdir) / "input.gpx"
-        output_path = Path(tmpdir) / "output.gpx"
         input_path.write_text(gpx_content, encoding="utf-8")
-        process_gpx(str(input_path), str(output_path), config)
-        tree = ET.parse(output_path)
-        return tree.getroot()
+        return process_gpx(str(input_path), config)
 
 
 def get_waypoints(root: ET.Element) -> list[dict]:
@@ -198,3 +200,112 @@ def test_ghost_point_creates_sensitive_zone_for_tracks():
     )
     root = run_process_gpx(gpx, config)
     assert get_track_points(root) == []
+
+
+# --- gpx_to_geojson ---
+
+
+def parse_gpx(gpx_content: str) -> ET.Element:
+    return ET.fromstring(gpx_content)
+
+
+def test_geojson_single_mode_produces_one_feature():
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "flight"},
+            {"lat": 3.0, "lon": 12.0, "transport": "flight"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    assert len(features) == 1
+    assert features[0]["properties"]["transport"] == "flight"
+    assert features[0]["geometry"]["type"] == "LineString"
+    assert len(features[0]["geometry"]["coordinates"]) == 3
+
+
+def test_geojson_mode_change_splits_into_two_features():
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "flight"},
+            {"lat": 3.0, "lon": 12.0, "transport": "train"},
+            {"lat": 4.0, "lon": 13.0, "transport": "train"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    assert len(features) == 2
+    assert features[0]["properties"]["transport"] == "flight"
+    assert features[1]["properties"]["transport"] == "train"
+
+
+def test_geojson_transition_point_is_shared():
+    # The last coord of segment N equals the first coord of segment N+1
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "flight"},
+            {"lat": 3.0, "lon": 12.0, "transport": "train"},
+            {"lat": 4.0, "lon": 13.0, "transport": "train"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    last_of_flight = features[0]["geometry"]["coordinates"][-1]
+    first_of_train = features[1]["geometry"]["coordinates"][0]
+    assert last_of_flight == first_of_train
+
+
+def test_geojson_no_transport_tag_produces_null_transport_segment():
+    # A point without a transport tag forms its own segment with transport=null
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "flight"},
+            {"lat": 3.0, "lon": 12.0},  # no transport
+            {"lat": 4.0, "lon": 13.0, "transport": "train"},
+            {"lat": 5.0, "lon": 14.0, "transport": "train"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    transports = [f["properties"]["transport"] for f in features]
+    assert None in transports
+
+
+def test_geojson_coordinates_are_lon_lat_order():
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "flight"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    first_coord = features[0]["geometry"]["coordinates"][0]
+    assert first_coord == [10.0, 1.0]  # [lon, lat]
+
+
+def test_geojson_empty_segment_produces_no_features():
+    gpx = make_gpx(waypoints=[], track_points=[])
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    assert features == []
+
+
+def test_geojson_single_point_run_is_skipped():
+    # A run of only one point cannot form a LineString and is dropped
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": 1.0, "lon": 10.0, "transport": "flight"},
+            {"lat": 2.0, "lon": 11.0, "transport": "train"},
+            {"lat": 3.0, "lon": 12.0, "transport": "train"},
+        ],
+    )
+    features = gpx_to_geojson(parse_gpx(gpx))["features"]
+    # The flight run has only 1 point (+ the shared transition to train = 2 coords).
+    # The train run has 2 points + the shared transition from flight.
+    transports = [f["properties"]["transport"] for f in features]
+    assert "train" in transports
