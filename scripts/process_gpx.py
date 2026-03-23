@@ -180,12 +180,17 @@ def gpx_to_geojson(root: ET.Element) -> dict:
 
                 if mode != current_mode:
                     if current_coords:
+                        # The transport tag is on the departure point, so include
+                        # this point in the closing segment, then share it as the
+                        # start of the new segment.
+                        current_coords.append([lon, lat])
                         runs.append((current_mode, current_coords))
-                        # Share the transition point so adjacent LineStrings connect
-                        current_coords = [current_coords[-1]]
+                        current_coords = [[lon, lat]]
+                    else:
+                        current_coords = [[lon, lat]]
                     current_mode = mode
-
-                current_coords.append([lon, lat])
+                else:
+                    current_coords.append([lon, lat])
 
             if current_coords:
                 runs.append((current_mode, current_coords))
