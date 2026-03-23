@@ -58,8 +58,8 @@ deploy-db:
 
 test-python:
 	@echo "Running Python tests..."
-	# PYTHONPATH=. ensures pytest can find imports relative to the project root
-	PYTHONPATH=. pytest db/tests/ embedding_service/tests/ scripts/tests/
+	# PYTHONPATH=.:scripts — project root for db/embedding imports, scripts/ for gps_utils
+	PYTHONPATH=.:scripts pytest db/tests/ embedding_service/tests/ scripts/tests/
 
 test-go:
 	@echo "Running Go tests..."

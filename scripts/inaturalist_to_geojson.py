@@ -1,14 +1,53 @@
 import csv
 import json
 import os
+import random
 import shutil
+from typing import Any
 
 import click
 from dotenv import load_dotenv
 
+from gps_utils import calculate_destination_point, haversine_distance
+
+
+def build_sensitive_zones(sensitive_config: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Pre-compute fake locations for each sensitive zone that has explicit coordinates.
+    Entries without lat/lon are skipped — they require a GPX file to resolve coordinates.
+    Uses the same seeded RNG logic as obfuscate_points.py so fake locations are consistent.
+    """
+    zones = []
+    for name, config in sensitive_config.items():
+        if "lat" not in config or "lon" not in config:
+            print(f"  [SKIP] '{name}': no explicit lat/lon in config, cannot obfuscate iNat observations")
+            continue
+        lat, lon = config["lat"], config["lon"]
+        rng = random.Random(config["seed"])
+        dist = config["radius"]
+        random_distance = rng.uniform(dist * 0.75, dist)
+        random_bearing = rng.uniform(0, 360)
+        fake_lat, fake_lon = calculate_destination_point(lat, lon, random_distance, random_bearing)
+        zones.append({"lat": lat, "lon": lon, "radius": dist, "fake_lat": fake_lat, "fake_lon": fake_lon})
+        print(f"  [Sensitive zone] '{name}': radius={dist}km, fake=({fake_lat}, {fake_lon})")
+    return zones
+
+
+def apply_obfuscation(
+    lat: float, lon: float, zones: list[dict[str, Any]]
+) -> tuple[float, float]:
+    """If (lat, lon) falls within any sensitive zone's radius, return its fake location."""
+    for zone in zones:
+        if haversine_distance(lat, lon, zone["lat"], zone["lon"]) <= zone["radius"]:
+            return zone["fake_lat"], zone["fake_lon"]
+    return lat, lon
+
 
 def convert_inat_csv_to_geojson(
-    input_csv: str, output_geojson: str, taxa_json: str
+    input_csv: str,
+    output_geojson: str,
+    taxa_json: str,
+    sensitive_zones: list[dict[str, Any]] | None = None,
 ) -> bool:
     """
     Converts an iNaturalist CSV export into a GeoJSON FeatureCollection.
@@ -54,6 +93,9 @@ def convert_inat_csv_to_geojson(
             # Skip if coordinates are 0,0 (unless you actually went to Null Island)
             if lat == 0 and lon == 0:
                 continue
+
+            if sensitive_zones:
+                lat, lon = apply_obfuscation(lat, lon, sensitive_zones)
 
             # 2. Determine Title (Fallback Strategy)
             # Try Common Name -> Scientific Name -> Species Guess -> "Observation"
@@ -102,11 +144,19 @@ def convert_inat_csv_to_geojson(
     default=None,
     help='Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass "" to disable.',
 )
-def run(input_csv: str, deploy_path: str | None) -> None:
+@click.option(
+    "-w",
+    "--waypoints",
+    type=click.Path(exists=True, path_type=str),
+    default=None,
+    help="Path to sensitive_waypoints.json. Default: PRIVATE_DATA_DIR/sensitive_waypoints.json",
+)
+def run(input_csv: str, deploy_path: str | None, waypoints: str | None) -> None:
     """
     Convert iNaturalist CSV export to a GeoJSON FeatureCollection for map view.
 
     Uses taxon data from PUBLIC_DATA_DIR for global observation counts.
+    Obfuscates observations near sensitive locations using the same config as obfuscate_points.py.
     Output is written to FINAL_DATA_DIR/inaturalist.geojson.
 
     INPUT_CSV: Path to the input CSV file.
@@ -116,6 +166,7 @@ def run(input_csv: str, deploy_path: str | None) -> None:
     output_file = os.path.join(os.getenv("FINAL_DATA_DIR"), "inaturalist.geojson")
     taxa_json_file = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
     default_deploy_path = os.path.join(os.getenv("DEPLOY_TARGET"), "observations")
+    waypoints_path = waypoints or os.path.join(os.getenv("PRIVATE_DATA_DIR"), "sensitive_waypoints.json")
 
     if deploy_path is None:
         deploy_path = default_deploy_path
@@ -128,7 +179,17 @@ def run(input_csv: str, deploy_path: str | None) -> None:
     if not os.path.exists(input_csv):
         raise SystemExit(f"Error: Could not find input file '{input_csv}'")
 
-    success = convert_inat_csv_to_geojson(input_csv, output_file, taxa_json_file)
+    sensitive_zones = []
+    if os.path.exists(waypoints_path):
+        with open(waypoints_path, "r") as f:
+            data = json.load(f)
+        config = {item["name"]: item for item in data}
+        print("Building sensitive zones for obfuscation...")
+        sensitive_zones = build_sensitive_zones(config)
+    else:
+        print(f"[WARN] Waypoints config not found at {waypoints_path}, skipping obfuscation")
+
+    success = convert_inat_csv_to_geojson(input_csv, output_file, taxa_json_file, sensitive_zones)
 
     if success and deploy_path:
         try:
