@@ -16,7 +16,7 @@ load_dotenv()
 
 # My iNaturalist observations file
 inat_file = os.path.join(
-    os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observations-679011.csv"
+    os.getenv("PRIVATE_DATA_DIR"), "inaturalist/observations-679011.csv"
 )
 
 # The large GBIF report file

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # --- CONFIGURATION ---
 load_dotenv()
 input_csv = os.path.join(
-    os.getenv("PERSONAL_DATA_DIR"), "inaturalist/observations-679011.csv"
+    os.getenv("PRIVATE_DATA_DIR"), "inaturalist/observations-679011.csv"
 )
 output_json = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
 # ---------------------
