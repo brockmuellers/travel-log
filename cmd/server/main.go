@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -153,7 +154,7 @@ func (p *r2Presigner) URL(ctx context.Context, key string) (string, error) {
 func NewHandler(cfg ServerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
-	mux.HandleFunc("GET /waypoints", waypointsList(cfg.Pool))
+	mux.HandleFunc("GET /waypoints", waypointsList(cfg.Pool, cfg.R2Presigner, cfg.PhotoBaseURL))
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(cfg.Pool))
 	mux.HandleFunc("GET /waypoints/search", waypointsSearchHybrid(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL, cfg.R2Presigner, cfg.PhotoBaseURL))
 
@@ -231,12 +232,13 @@ func httpError(w http.ResponseWriter, msg string, code int, err error) {
 	http.Error(w, `{"error":"`+msg+`"}`, code)
 }
 
-func waypointsList(pool *pgxpool.Pool) http.HandlerFunc {
+func waypointsList(pool *pgxpool.Pool, presigner *r2Presigner, photoBaseURL string) http.HandlerFunc {
 	type waypointItem struct {
 		ID          int         `json:"id"`
 		Name        string      `json:"name"`
 		Description string      `json:"description"`
-		Coordinates *[2]float64 `json:"coordinates"` // [lon, lat]; nil if no location
+		Coordinates *[2]float64 `json:"coordinates"`  // [lon, lat]; nil if no location
+		PhotoURL    *string     `json:"photo_url"`    // nil if no photos
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
@@ -267,6 +269,56 @@ func waypointsList(pool *pgxpool.Pool) http.HandlerFunc {
 		if err := rows.Err(); err != nil {
 			httpError(w, "database query failed", http.StatusInternalServerError, err)
 			return
+		}
+
+		// Fetch all photo filenames for the returned waypoints, then pick one
+		// per waypoint using a seeded RNG (seed = waypoint ID) so the choice
+		// is deterministic across requests.
+		if len(results) > 0 {
+			wpIDs := make([]int, len(results))
+			for i, item := range results {
+				wpIDs[i] = item.ID
+			}
+			photoRows, err := pool.Query(r.Context(),
+				`SELECT waypoint_id, filename FROM photos WHERE waypoint_id = ANY($1) AND filename IS NOT NULL`,
+				wpIDs,
+			)
+			if err != nil {
+				log.Printf("photo fetch error: %v", err)
+				// Non-fatal: return waypoints without photos.
+			} else {
+				defer photoRows.Close()
+				photosByWaypoint := map[int][]string{}
+				for photoRows.Next() {
+					var wpID int
+					var filename string
+					if err := photoRows.Scan(&wpID, &filename); err != nil {
+						log.Printf("photo scan error: %v", err)
+						break
+					}
+					photosByWaypoint[wpID] = append(photosByWaypoint[wpID], filename)
+				}
+				for i, item := range results {
+					filenames := photosByWaypoint[item.ID]
+					if len(filenames) == 0 {
+						continue
+					}
+					chosen := filenames[rand.New(rand.NewSource(int64(item.ID))).Intn(len(filenames))]
+					var url string
+					if presigner != nil {
+						url, err = presigner.URL(r.Context(), chosen)
+						if err != nil {
+							log.Printf("presign error for %s: %v", chosen, err)
+							continue
+						}
+					} else if photoBaseURL != "" {
+						url = photoBaseURL + "/" + chosen
+					}
+					if url != "" {
+						results[i].PhotoURL = &url
+					}
+				}
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

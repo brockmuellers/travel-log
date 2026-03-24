@@ -75,8 +75,9 @@ func TestIntegration_WaypointsList(t *testing.T) {
 	defer pool.Close()
 
 	handler := NewHandler(ServerConfig{
-		Pool:      pool,
-		SiteToken: "test-token",
+		Pool:         pool,
+		SiteToken:    "test-token",
+		PhotoBaseURL: "http://localhost:8082",
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/waypoints", nil)
@@ -89,7 +90,7 @@ func TestIntegration_WaypointsList(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(rec.Body).Decode(&results), "decode waypoints response")
 	assert.NotEmpty(t, results, "GET /waypoints must return at least one waypoint")
 	for i, r := range results {
-		for _, key := range []string{"id", "name", "description", "coordinates"} {
+		for _, key := range []string{"id", "name", "description", "coordinates", "photo_url"} {
 			assert.Contains(t, r, key, "waypoint [%d] must have key %q", i, key)
 		}
 		assert.IsType(t, float64(0), r["id"], "waypoint [%d] id must be a number", i)
