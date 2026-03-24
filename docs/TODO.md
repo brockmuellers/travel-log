@@ -2,6 +2,7 @@
 
 **High:**
 * Download and process eBird data
+* Download and process garmin data
 
 **Medium:**
 * Build waypoint summaries from all data embeddings
@@ -21,12 +22,15 @@
 ### Internal
 
 **Medium:**
-* Split up (and clean up) logic in frontend file
-* Explore moving frontend logic to travel repo (source as link, or copy with gh actions, or other?)
 * Set up a local test DB
 * Python tests for data transformation (and maybe full integration test?)
 * Explore further Claude configuration
 * Duplicated point obfuscation code in db waypoint reload scripts?
+
+**Low:**
+* Explore using gorm
+* Split up (and clean up) logic in frontend file
+* Explore moving frontend logic to travel repo (source as link, or copy with gh actions, or other?)
 
 ### Data
 
@@ -47,6 +51,7 @@
 * Check cold start response times; might want something to ping my health endpoint regularly (14 minutes?) to keep render from going to sleep; maybe just during the day
 * I think the bot control I was hoping for doesn't apply to my API, since the CNAME isn't forwarded - double check that
 * Expose embedding_service to public internet so I can bypass huggingfaces when my computer is on?
+* Auto-deploy seems broken on render (see excluded/included paths)
 
 **Low:**
 * Neon won't automatically update my schema or data

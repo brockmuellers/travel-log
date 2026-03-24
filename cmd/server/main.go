@@ -239,13 +239,16 @@ func waypointsList(pool *pgxpool.Pool, presigner *r2Presigner, photoBaseURL stri
 		Description string      `json:"description"`
 		Coordinates *[2]float64 `json:"coordinates"`  // [lon, lat]; nil if no location
 		PhotoURL    *string     `json:"photo_url"`    // nil if no photos
+		Trip        *string     `json:"trip"`         // trip key; nil if no trip
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
-			SELECT id, name, COALESCE(description, '') AS description,
-			       ST_X(location_public::geometry) AS lon, ST_Y(location_public::geometry) AS lat
-			FROM waypoints
-			ORDER BY id
+			SELECT w.id, w.name, COALESCE(w.description, '') AS description,
+			       ST_X(w.location_public::geometry) AS lon, ST_Y(w.location_public::geometry) AS lat,
+			       t.key AS trip_key
+			FROM waypoints w
+			LEFT JOIN trips t ON t.id = w.trip_id
+			ORDER BY w.id
 		`)
 		if err != nil {
 			httpError(w, "database query failed", http.StatusInternalServerError, err)
@@ -257,7 +260,7 @@ func waypointsList(pool *pgxpool.Pool, presigner *r2Presigner, photoBaseURL stri
 		for rows.Next() {
 			var item waypointItem
 			var lon, lat *float64
-			if err := rows.Scan(&item.ID, &item.Name, &item.Description, &lon, &lat); err != nil {
+			if err := rows.Scan(&item.ID, &item.Name, &item.Description, &lon, &lat, &item.Trip); err != nil {
 				httpError(w, "database scan failed", http.StatusInternalServerError, err)
 				return
 			}
