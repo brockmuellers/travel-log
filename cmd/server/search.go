@@ -443,15 +443,15 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 					photos = []photoMatch{}
 				}
 				for i := range photos {
-					if presigner != nil {
+					if photoBaseURL != "" {
+						photos[i].URL = photoBaseURL + "/" + photos[i].Filename
+					} else if presigner != nil {
 						url, err := presigner.URL(r.Context(), photos[i].Filename)
 						if err != nil {
 							log.Printf("presign error for %s: %v", photos[i].Filename, err)
 							continue
 						}
 						photos[i].URL = url
-					} else if photoBaseURL != "" {
-						photos[i].URL = photoBaseURL + "/" + photos[i].Filename
 					}
 				}
 				result.Photos = photos

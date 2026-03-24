@@ -305,14 +305,14 @@ func waypointsList(pool *pgxpool.Pool, presigner *r2Presigner, photoBaseURL stri
 					}
 					chosen := filenames[rand.New(rand.NewSource(int64(item.ID))).Intn(len(filenames))]
 					var url string
-					if presigner != nil {
+					if photoBaseURL != "" {
+						url = photoBaseURL + "/" + chosen
+					} else if presigner != nil {
 						url, err = presigner.URL(r.Context(), chosen)
 						if err != nil {
 							log.Printf("presign error for %s: %v", chosen, err)
 							continue
 						}
-					} else if photoBaseURL != "" {
-						url = photoBaseURL + "/" + chosen
 					}
 					if url != "" {
 						results[i].PhotoURL = &url
