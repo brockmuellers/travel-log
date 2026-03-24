@@ -133,3 +133,7 @@ With claude, I can blaze through all my little irritations and improvements - my
 2026-03-20
 
 Not all photos are getting assigned, so I need some manual "trips" to get those waypoints that are not part of one of my official findpenguins trips.
+
+2026-03-23
+
+I'm noticing that it's really easy to work "too fast" with claude. I'm writing fewer notes (am I thinking less or am I instead rubber ducking with the claude chat? I think the latter but it's the sort of thing one could be deluded about). Sometimes I just want something to be done, and I approve whatever code changes it suggests, maybe ask it to explain a thing or two, and that's all. That doesn't lead to good long term results though. When I have a good mental model of the codebase, I think of things that claude misses all the time. It's a crucial part of code quality and simplicity. When I rush through implementing features, I no longer have a good mental model of the codebase. What new mess will I make for myself?
