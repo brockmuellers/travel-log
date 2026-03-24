@@ -71,6 +71,8 @@ def process_gpx(
             dist = config["radius"]
             # Randomize distance between 75%-100% of radius to guarantee meaningful
             # displacement while avoiding a predictable exact-radius displacement.
+            # NOTE: This RNG sequence (random_distance then random_bearing) is duplicated
+            # in db/populate_public_locations.py. Changes here must be mirrored there.
             random_distance = rng.uniform(dist * 0.75, dist)
             random_bearing = rng.uniform(0, 360)
 

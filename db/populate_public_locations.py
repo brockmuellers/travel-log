@@ -86,15 +86,17 @@ def run(
             config = sensitive_config[name]
             rng = random.Random(config["seed"])
             dist = config["radius"]
+            # Randomize distance between 75%-100% of radius, matching process_gpx.py.
+            random_distance = rng.uniform(dist * 0.75, dist)
             bearing = rng.uniform(0, 360)
-            new_lat, new_lon = calculate_destination_point(lat, lon, dist, bearing)
+            new_lat, new_lon = calculate_destination_point(lat, lon, random_distance, bearing)
             # Store the delta so photos can reuse it
             sensitive_offsets[wp_id] = (new_lat - lat, new_lon - lon)
             cur.execute(
                 "UPDATE waypoints SET location_public = ST_SetSRID(ST_MakePoint(%s, %s), 4326) WHERE id = %s",
                 (new_lon, new_lat, wp_id),
             )
-            print(f"  Obfuscated waypoint '{name}' (id={wp_id}): {dist:.1f}km @ {bearing:.0f}°")
+            print(f"  Obfuscated waypoint '{name}' (id={wp_id}): {random_distance:.1f}km @ {bearing:.0f}°")
         else:
             cur.execute(
                 "UPDATE waypoints SET location_public = location WHERE id = %s",
