@@ -84,6 +84,14 @@ class TestParseFpGpx:
         assert trip["name"] == "Test Trip"
         assert trip["source"] == "findpenguins"
 
+    def test_trip_key_slugified(self, tmp_path: Path) -> None:
+        gpx_file = tmp_path / "test.gpx"
+        gpx_file.write_text(MINIMAL_GPX)
+
+        trip = parse_fp_gpx(gpx_file)
+
+        assert trip["key"] == "test-trip"
+
     def test_waypoint_count_and_fields(self, tmp_path: Path) -> None:
         gpx_file = tmp_path / "test.gpx"
         gpx_file.write_text(MINIMAL_GPX)
@@ -162,6 +170,23 @@ class TestParseManualTrips:
         assert len(trips) == 1
         assert trips[0]["name"] == "Pre-trip"
         assert trips[0]["source"] == "manual"
+
+    def test_trip_key_auto_generated(self, tmp_path: Path) -> None:
+        json_file = tmp_path / "trips.json"
+        json_file.write_text(json.dumps(MINIMAL_MANUAL_JSON))
+
+        trips = parse_manual_trips(json_file)
+
+        assert trips[0]["key"] == "pre-trip"
+
+    def test_trip_key_explicit(self, tmp_path: Path) -> None:
+        data = [{"name": "West Coast", "key": "west-coast", "waypoints": MINIMAL_MANUAL_JSON[0]["waypoints"]}]
+        json_file = tmp_path / "trips.json"
+        json_file.write_text(json.dumps(data))
+
+        trips = parse_manual_trips(json_file)
+
+        assert trips[0]["key"] == "west-coast"
 
     def test_waypoint_fields(self, tmp_path: Path) -> None:
         json_file = tmp_path / "trips.json"

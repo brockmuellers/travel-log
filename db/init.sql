@@ -9,6 +9,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS trips (
     id SERIAL PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
+    key TEXT UNIQUE NOT NULL, -- URL-friendly slug, e.g. 'west-coast'
     start_date DATE,
     end_date DATE,
     source TEXT, -- 'findpenguins' or 'manual'

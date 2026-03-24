@@ -1,6 +1,7 @@
 import contextlib
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -25,6 +26,13 @@ def _first_waypoint_time(path: Path) -> str:
     tree = ET.parse(path)
     root = tree.getroot()
     return root.find("gpx:wpt", NS).find("gpx:time", NS).text
+
+
+def _slugify(name: str) -> str:
+    """Convert a trip name to a URL-friendly key (e.g. 'West Coast' → 'west-coast')."""
+    s = name.lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
 
 
 def _strip_nul(s: str | None) -> str | None:
@@ -62,6 +70,7 @@ def get_text(elem: ET.Element, tag: str) -> str | None:
 # Common trip format:
 # {
 #     "name": str,
+#     "key": str,   -- URL-friendly slug, e.g. 'west-coast'
 #     "source": "findpenguins" | "manual",
 #     "waypoints": [
 #         {
@@ -135,6 +144,7 @@ def parse_fp_gpx(path: Path) -> dict:
 
     return {
         "name": trip_name,
+        "key": _slugify(trip_name),
         "source": "findpenguins",
         "waypoints": waypoints,
     }
@@ -196,6 +206,7 @@ def parse_manual_trips(json_path: str | Path) -> list[dict]:
         result.append(
             {
                 "name": mt["name"],
+                "key": mt.get("key") or _slugify(mt["name"]),
                 "source": "manual",
                 "waypoints": waypoints,
             }
@@ -234,10 +245,10 @@ def insert_trip(cur: psycopg2.extensions.cursor, trip: dict) -> int:
 
     cur.execute(
         """
-        INSERT INTO trips (name, start_date, end_date, source)
-        VALUES (%s, %s, %s, %s) RETURNING id
+        INSERT INTO trips (name, key, start_date, end_date, source)
+        VALUES (%s, %s, %s, %s, %s) RETURNING id
         """,
-        (trip["name"], start_date, end_date, trip["source"]),
+        (trip["name"], trip["key"], start_date, end_date, trip["source"]),
     )
     trip_id = cur.fetchone()[0]
 

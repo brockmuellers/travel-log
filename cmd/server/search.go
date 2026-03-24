@@ -139,11 +139,13 @@ type photoMatch struct {
 // descriptionSearchSQL ranks waypoints by cosine distance between the query
 // embedding and waypoints.embedding. This is the original search behavior.
 const descriptionSearchSQL = `
-SELECT id, name, COALESCE(description, '') AS description,
-       ST_X(location_public::geometry) AS lon, ST_Y(location_public::geometry) AS lat,
-       (embedding <=> $1) AS distance
-FROM waypoints
-WHERE embedding IS NOT NULL
+SELECT w.id, w.name, COALESCE(w.description, '') AS description,
+       ST_X(w.location_public::geometry) AS lon, ST_Y(w.location_public::geometry) AS lat,
+       (w.embedding <=> $1) AS distance
+FROM waypoints w
+JOIN trips t ON t.id = w.trip_id
+WHERE w.embedding IS NOT NULL
+  AND ($3::text IS NULL OR t.key = $3)
 ORDER BY distance ASC
 LIMIT $2
 `
@@ -174,7 +176,9 @@ SELECT
     AVG(rp.distance) AS photo_distance
 FROM ranked_photos rp
 JOIN waypoints w ON w.id = rp.waypoint_id
+JOIN trips t ON t.id = w.trip_id
 WHERE rp.rn <= $2
+  AND ($4::text IS NULL OR t.key = $4)
 GROUP BY w.id, w.name, w.description, w.location_public
 ORDER BY photo_distance ASC
 LIMIT $3
@@ -222,8 +226,10 @@ SELECT
         ELSE pa.photo_distance
     END AS combined_distance
 FROM waypoints w
+JOIN trips t ON t.id = w.trip_id
 LEFT JOIN photo_agg pa ON pa.waypoint_id = w.id
-WHERE w.embedding IS NOT NULL OR pa.photo_distance IS NOT NULL
+WHERE (w.embedding IS NOT NULL OR pa.photo_distance IS NOT NULL)
+  AND ($5::text IS NULL OR t.key = $5)
 ORDER BY combined_distance ASC
 LIMIT $4
 `
@@ -283,6 +289,20 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			return
 		}
 
+		var tripFilter *string
+		if trip := r.URL.Query().Get("trip"); trip != "" {
+			var exists bool
+			if err := pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM trips WHERE key = $1)", trip).Scan(&exists); err != nil {
+				httpError(w, "database query failed", http.StatusInternalServerError, err)
+				return
+			}
+			if !exists {
+				httpError(w, "unknown trip: "+trip, http.StatusNotFound, nil)
+				return
+			}
+			tripFilter = &trip
+		}
+
 		vec, err := fetchQueryEmbedding(r.Context(), q, env, embeddingServiceURL)
 		if err != nil {
 			httpError(w, "embedding service error", http.StatusBadGateway, err)
@@ -307,7 +327,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 
 		switch mode {
 		case "description":
-			dbRows, err := pool.Query(r.Context(), descriptionSearchSQL, pgVec, searchLimit)
+			dbRows, err := pool.Query(r.Context(), descriptionSearchSQL, pgVec, searchLimit, tripFilter)
 			if err != nil {
 				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
@@ -329,7 +349,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			}
 
 		case "photo":
-			dbRows, err := pool.Query(r.Context(), photoSearchSQL, pgVec, topNPhotos, searchLimit)
+			dbRows, err := pool.Query(r.Context(), photoSearchSQL, pgVec, topNPhotos, searchLimit, tripFilter)
 			if err != nil {
 				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
@@ -351,7 +371,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			}
 
 		case "combined":
-			dbRows, err := pool.Query(r.Context(), combinedSearchSQL, pgVec, topNPhotos, blendAlpha, searchLimit)
+			dbRows, err := pool.Query(r.Context(), combinedSearchSQL, pgVec, topNPhotos, blendAlpha, searchLimit, tripFilter)
 			if err != nil {
 				httpError(w, "database query failed", http.StatusInternalServerError, err)
 				return
