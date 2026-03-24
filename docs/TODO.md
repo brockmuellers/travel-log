@@ -7,6 +7,7 @@
 **Medium:**
 * Build waypoint summaries from all data embeddings
 * Simple "near here" map click search to take advantage of location indexes
+* Play around with agentic flow for chat bot
 
 ### Product Improvements/Fixes
 
@@ -15,6 +16,9 @@
 * Display clickable waypoints on map
 * Waypoint search: explore hiding results with a large distance
 * Explore different embeddings
+
+**Low:**
+* Sort inaturalist observations by rarity so the rarest in a region shows up on top
 
 ### Internal
 
