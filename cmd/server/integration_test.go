@@ -70,6 +70,32 @@ func TestIntegration_WaypointsCount(t *testing.T) {
 	assert.Contains(t, out, "count", "count response must have \"count\" key")
 }
 
+func TestIntegration_WaypointsList(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	handler := NewHandler(ServerConfig{
+		Pool:      pool,
+		SiteToken: "test-token",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/waypoints", nil)
+	req.Header.Set("X-Site-Token", "test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code, "GET /waypoints status")
+	var results []map[string]interface{}
+	assert.NoError(t, json.NewDecoder(rec.Body).Decode(&results), "decode waypoints response")
+	assert.NotEmpty(t, results, "GET /waypoints must return at least one waypoint")
+	for i, r := range results {
+		for _, key := range []string{"id", "name", "description", "coordinates"} {
+			assert.Contains(t, r, key, "waypoint [%d] must have key %q", i, key)
+		}
+		assert.IsType(t, float64(0), r["id"], "waypoint [%d] id must be a number", i)
+	}
+}
+
 func TestIntegration_WaypointsSearch(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -97,7 +123,7 @@ func TestIntegration_WaypointsSearch(t *testing.T) {
 	err := json.Unmarshal(body, &results)
 	assert.NoError(t, err, "decode search response")
 	for i, r := range results {
-		for _, key := range []string{"name", "description", "coordinates", "distance", "score", "description_distance", "photo_distance", "photos"} {
+		for _, key := range []string{"id", "name", "description", "coordinates", "distance", "score", "description_distance", "photo_distance", "photos"} {
 			assert.Contains(t, r, key, "search result [%d] must have key %q", i, key)
 		}
 	}

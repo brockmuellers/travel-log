@@ -153,6 +153,7 @@ func (p *r2Presigner) URL(ctx context.Context, key string) (string, error) {
 func NewHandler(cfg ServerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
+	mux.HandleFunc("GET /waypoints", waypointsList(cfg.Pool))
 	mux.HandleFunc("GET /waypoints/count", waypointsCount(cfg.Pool))
 	mux.HandleFunc("GET /waypoints/search", waypointsSearchHybrid(cfg.Pool, cfg.Env, cfg.EmbeddingServiceURL, cfg.R2Presigner, cfg.PhotoBaseURL))
 
@@ -228,6 +229,49 @@ func httpError(w http.ResponseWriter, msg string, code int, err error) {
 		log.Printf("HTTP %d: %s", code, msg)
 	}
 	http.Error(w, `{"error":"`+msg+`"}`, code)
+}
+
+func waypointsList(pool *pgxpool.Pool) http.HandlerFunc {
+	type waypointItem struct {
+		ID          int         `json:"id"`
+		Name        string      `json:"name"`
+		Description string      `json:"description"`
+		Coordinates *[2]float64 `json:"coordinates"` // [lon, lat]; nil if no location
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := pool.Query(r.Context(), `
+			SELECT id, name, COALESCE(description, '') AS description,
+			       ST_X(location_public::geometry) AS lon, ST_Y(location_public::geometry) AS lat
+			FROM waypoints
+			ORDER BY id
+		`)
+		if err != nil {
+			httpError(w, "database query failed", http.StatusInternalServerError, err)
+			return
+		}
+		defer rows.Close()
+
+		results := []waypointItem{}
+		for rows.Next() {
+			var item waypointItem
+			var lon, lat *float64
+			if err := rows.Scan(&item.ID, &item.Name, &item.Description, &lon, &lat); err != nil {
+				httpError(w, "database scan failed", http.StatusInternalServerError, err)
+				return
+			}
+			if lon != nil && lat != nil {
+				item.Coordinates = &[2]float64{*lon, *lat}
+			}
+			results = append(results, item)
+		}
+		if err := rows.Err(); err != nil {
+			httpError(w, "database query failed", http.StatusInternalServerError, err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	}
 }
 
 func waypointsCount(pool *pgxpool.Pool) http.HandlerFunc {

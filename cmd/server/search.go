@@ -111,6 +111,7 @@ const (
 // hybridSearchResult is one waypoint in search results. It carries both
 // per-signal distances so the frontend can show or log how ranking was derived.
 type hybridSearchResult struct {
+	ID                  int          `json:"id"`
 	Name                string       `json:"name"`
 	Description         string       `json:"description"`
 	Coordinates         *[2]float64  `json:"coordinates"`          // [lon, lat] (GeoJSON order); nil if no location
@@ -416,6 +417,7 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 			}
 
 			result := hybridSearchResult{
+				ID:          row.id,
 				Name:        row.name,
 				Description: row.description,
 				Distance:    dist,
