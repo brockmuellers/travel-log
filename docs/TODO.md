@@ -10,9 +10,6 @@
 
 ### Product Improvements/Fixes
 
-**High:**
-* Partly broken inaturalist obfuscation - not essential so could either remove or fix
-
 **Medium:**
 * Improve copy on waypoint search (what can you search for and what do results mean, as well as "first search may take a while...")
 * Display clickable waypoints on map

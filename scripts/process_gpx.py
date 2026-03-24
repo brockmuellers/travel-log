@@ -8,7 +8,6 @@ from typing import Any
 
 import click
 from dotenv import load_dotenv
-
 from gps_utils import calculate_destination_point, haversine_distance
 
 # XML Namespace for GPX 1.1
@@ -26,7 +25,8 @@ def process_gpx(
     # Store transformation rules: (original_lat, original_lon) -> {'new_pos': (lat, lon), 'radius': r}
     point_transformations = {}
 
-    # 0. Pre-Pass: Handle Explicit "Ghost" Coordinates from JSON (those not matching a waypoint)
+    # 0. Pre-Pass: Handle Explicit "Ghost" Coordinates from JSON
+    #    (those not matching a waypoint, or waypoints with approx locations)
     for name, config in sensitive_config.items():
         if "lat" in config and "lon" in config:
             lat = config["lat"]

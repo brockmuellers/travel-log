@@ -27,9 +27,8 @@ def build_sensitive_zones(sensitive_config: dict[str, Any]) -> list[dict[str, An
         dist = config["radius"]
         random_distance = rng.uniform(dist * 0.75, dist)
         random_bearing = rng.uniform(0, 360)
-        fake_lat, fake_lon = calculate_destination_point(lat, lon, random_distance, random_bearing)
-        zones.append({"lat": lat, "lon": lon, "radius": dist, "fake_lat": fake_lat, "fake_lon": fake_lon})
-        print(f"  [Sensitive zone] '{name}': radius={dist}km, fake=({fake_lat}, {fake_lon})")
+        zones.append({"lat": lat, "lon": lon, "radius": dist, "displacement_distance": random_distance, "displacement_bearing": random_bearing})
+        print(f"  [Sensitive zone] '{name}': radius={dist}km, displacement=({random_distance:.2f}km @ {random_bearing:.1f}°)")
     return zones
 
 
@@ -39,7 +38,7 @@ def apply_obfuscation(
     """If (lat, lon) falls within any sensitive zone's radius, return its fake location."""
     for zone in zones:
         if haversine_distance(lat, lon, zone["lat"], zone["lon"]) <= zone["radius"]:
-            return zone["fake_lat"], zone["fake_lon"]
+            return calculate_destination_point(lat, lon, zone["displacement_distance"], zone["displacement_bearing"])
     return lat, lon
 
 
