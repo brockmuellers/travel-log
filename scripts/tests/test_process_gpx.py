@@ -145,6 +145,23 @@ def test_track_point_outside_zone_is_kept():
     assert pts[0] == pytest.approx((far_lat, far_lon))
 
 
+def test_track_visits_waypoint_mismatch_prints_warning(capsys):
+    # 1 waypoint but 2 track visits → warning printed
+    near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
+    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 50.0, 90.0)
+    near2_lat, near2_lon = calculate_destination_point(40.0, -75.0, 2.0, 180.0)
+    gpx = make_gpx(
+        waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],  # 1 waypoint
+        track_points=[
+            {"lat": near_lat, "lon": near_lon},   # visit 1
+            {"lat": far_lat, "lon": far_lon},       # safe
+            {"lat": near2_lat, "lon": near2_lon},  # visit 2 (no matching waypoint)
+        ],
+    )
+    run_process_gpx(gpx, [ZONE])
+    assert "[WARN]" in capsys.readouterr().out
+
+
 def test_track_point_zone_visited_twice_gets_two_bridges():
     # Each separate visit to a zone should produce its own bridge point.
     near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
