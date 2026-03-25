@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.gps_utils import calculate_destination_point, haversine_distance
+from lib.gps_utils import calculate_destination_point, compute_obfuscated_location, haversine_distance
 from scripts.inaturalist_to_geojson import (
     apply_obfuscation,
     build_sensitive_zones,
@@ -14,9 +14,9 @@ from scripts.inaturalist_to_geojson import (
 
 # --- Helpers ---
 
-SENSITIVE_CONFIG = {
-    "My House": {"name": "My House", "seed": 42, "radius": 5, "lat": 40.0, "lon": -75.0}
-}
+SENSITIVE_CONFIG = [
+    {"name": "My House", "displacement": 3.5, "bearing": 45.0, "radius": 5, "lat": 40.0, "lon": -75.0}
+]
 
 
 def make_csv(rows: list[dict]) -> str:
@@ -44,26 +44,13 @@ def run_convert(csv_content: str, zones=None) -> list[dict]:
 # --- build_sensitive_zones ---
 
 
-def test_build_sensitive_zones_with_explicit_coords():
+def test_build_sensitive_zones_returns_one_zone():
     zones = build_sensitive_zones(SENSITIVE_CONFIG)
     assert len(zones) == 1
     z = zones[0]
     assert z["lat"] == 40.0
     assert z["lon"] == -75.0
     assert z["radius"] == 5
-
-
-def test_build_sensitive_zones_skips_entries_without_coords():
-    config = {"Named Only": {"name": "Named Only", "seed": 1, "radius": 5}}
-    zones = build_sensitive_zones(config)
-    assert zones == []
-
-
-def test_build_sensitive_zones_fake_location_within_range():
-    zones = build_sensitive_zones(SENSITIVE_CONFIG)
-    z = zones[0]
-    dist = haversine_distance(40.0, -75.0, z["fake_lat"], z["fake_lon"])
-    assert 5 * 0.75 <= dist <= 5 + 0.001
 
 
 def test_build_sensitive_zones_is_deterministic():
@@ -77,10 +64,11 @@ def test_build_sensitive_zones_is_deterministic():
 
 def test_apply_obfuscation_moves_point_inside_radius():
     zones = build_sensitive_zones(SENSITIVE_CONFIG)
-    # A point 1 km from the sensitive location (well within 5 km radius)
     near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
     result_lat, result_lon = apply_obfuscation(near_lat, near_lon, zones)
-    assert (result_lat, result_lon) == (zones[0]["fake_lat"], zones[0]["fake_lon"])
+    expected_lat, expected_lon = compute_obfuscated_location(zones[0], near_lat, near_lon)
+    assert result_lat == pytest.approx(expected_lat)
+    assert result_lon == pytest.approx(expected_lon)
 
 
 def test_apply_obfuscation_leaves_point_outside_radius():
@@ -91,13 +79,13 @@ def test_apply_obfuscation_leaves_point_outside_radius():
     assert result_lon == pytest.approx(far_lon)
 
 
-def test_apply_obfuscation_all_points_in_zone_get_same_fake_location():
+def test_apply_obfuscation_different_points_in_zone_get_different_locations():
     zones = build_sensitive_zones(SENSITIVE_CONFIG)
     pt1_lat, pt1_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
     pt2_lat, pt2_lon = calculate_destination_point(40.0, -75.0, 2.0, 180.0)
     result1 = apply_obfuscation(pt1_lat, pt1_lon, zones)
     result2 = apply_obfuscation(pt2_lat, pt2_lon, zones)
-    assert result1 == result2
+    assert result1 != result2
 
 
 # --- convert_inat_csv_to_geojson ---
@@ -110,8 +98,9 @@ def test_observation_inside_zone_is_moved():
     features = run_convert(csv, zones)
     assert len(features) == 1
     out_lon, out_lat = features[0]["geometry"]["coordinates"]
-    assert out_lat == pytest.approx(zones[0]["fake_lat"])
-    assert out_lon == pytest.approx(zones[0]["fake_lon"])
+    expected_lat, expected_lon = compute_obfuscated_location(zones[0], near_lat, near_lon)
+    assert out_lat == pytest.approx(expected_lat)
+    assert out_lon == pytest.approx(expected_lon)
 
 
 def test_observation_outside_zone_is_unchanged():

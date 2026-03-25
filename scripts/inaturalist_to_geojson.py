@@ -1,44 +1,32 @@
 import csv
 import json
 import os
-import random
 import shutil
 from typing import Any
 
 import click
 from dotenv import load_dotenv
 
-from gps_utils import calculate_destination_point, haversine_distance
+from lib.gps_utils import compute_obfuscated_location, haversine_distance, load_sensitive_zones
 
 
-def build_sensitive_zones(sensitive_config: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Pre-compute fake locations for each sensitive zone that has explicit coordinates.
-    Entries without lat/lon are skipped — they require a GPX file to resolve coordinates.
-    Uses the same seeded RNG logic as obfuscate_points.py so fake locations are consistent.
-    """
+def build_sensitive_zones(sensitive_zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build sensitive zone dicts from config entries."""
     zones = []
-    for name, config in sensitive_config.items():
-        if "lat" not in config or "lon" not in config:
-            print(f"  [SKIP] '{name}': no explicit lat/lon in config, cannot obfuscate iNat observations")
-            continue
-        lat, lon = config["lat"], config["lon"]
-        rng = random.Random(config["seed"])
-        dist = config["radius"]
-        random_distance = rng.uniform(dist * 0.75, dist)
-        random_bearing = rng.uniform(0, 360)
-        zones.append({"lat": lat, "lon": lon, "radius": dist, "displacement_distance": random_distance, "displacement_bearing": random_bearing})
-        print(f"  [Sensitive zone] '{name}': radius={dist}km, displacement=({random_distance:.2f}km @ {random_bearing:.1f}°)")
+    for config in sensitive_zones:
+        zones.append({"lat": config["lat"], "lon": config["lon"], "radius": config["radius"],
+                      "displacement": config["displacement"], "bearing": config["bearing"]})
+        print(f"  [Sensitive zone] '{config['name']}': radius={config['radius']}km, displacement=({config['displacement']:.2f}km @ {config['bearing']:.1f}°)")
     return zones
 
 
 def apply_obfuscation(
     lat: float, lon: float, zones: list[dict[str, Any]]
 ) -> tuple[float, float]:
-    """If (lat, lon) falls within any sensitive zone's radius, return its fake location."""
+    """If (lat, lon) falls within any sensitive zone's radius, displace it by that zone's vector."""
     for zone in zones:
         if haversine_distance(lat, lon, zone["lat"], zone["lon"]) <= zone["radius"]:
-            return calculate_destination_point(lat, lon, zone["displacement_distance"], zone["displacement_bearing"])
+            return compute_obfuscated_location(zone, lat, lon)
     return lat, lon
 
 
@@ -143,19 +131,12 @@ def convert_inat_csv_to_geojson(
     default=None,
     help='Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass "" to disable.',
 )
-@click.option(
-    "-w",
-    "--waypoints",
-    type=click.Path(exists=True, path_type=str),
-    default=None,
-    help="Path to sensitive_waypoints.json. Default: PRIVATE_DATA_DIR/sensitive_waypoints.json",
-)
-def run(input_csv: str, deploy_path: str | None, waypoints: str | None) -> None:
+def run(input_csv: str, deploy_path: str | None) -> None:
     """
     Convert iNaturalist CSV export to a GeoJSON FeatureCollection for map view.
 
     Uses taxon data from PUBLIC_DATA_DIR for global observation counts.
-    Obfuscates observations near sensitive locations using the same config as obfuscate_points.py.
+    Obfuscates observations near sensitive locations using sensitive_waypoints.json.
     Output is written to FINAL_DATA_DIR/inaturalist.geojson.
 
     INPUT_CSV: Path to the input CSV file.
@@ -165,7 +146,6 @@ def run(input_csv: str, deploy_path: str | None, waypoints: str | None) -> None:
     output_file = os.path.join(os.getenv("FINAL_DATA_DIR"), "inaturalist.geojson")
     taxa_json_file = os.path.join(os.getenv("PUBLIC_DATA_DIR"), "inaturalist_taxa.json")
     default_deploy_path = os.path.join(os.getenv("DEPLOY_TARGET"), "observations")
-    waypoints_path = waypoints or os.path.join(os.getenv("PRIVATE_DATA_DIR"), "sensitive_waypoints.json")
 
     if deploy_path is None:
         deploy_path = default_deploy_path
@@ -178,15 +158,8 @@ def run(input_csv: str, deploy_path: str | None, waypoints: str | None) -> None:
     if not os.path.exists(input_csv):
         raise SystemExit(f"Error: Could not find input file '{input_csv}'")
 
-    sensitive_zones = []
-    if os.path.exists(waypoints_path):
-        with open(waypoints_path, "r") as f:
-            data = json.load(f)
-        config = {item["name"]: item for item in data}
-        print("Building sensitive zones for obfuscation...")
-        sensitive_zones = build_sensitive_zones(config)
-    else:
-        print(f"[WARN] Waypoints config not found at {waypoints_path}, skipping obfuscation")
+    print("Building sensitive zones for obfuscation...")
+    sensitive_zones = build_sensitive_zones(load_sensitive_zones())
 
     success = convert_inat_csv_to_geojson(input_csv, output_file, taxa_json_file, sensitive_zones)
 

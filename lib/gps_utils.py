@@ -1,4 +1,7 @@
+import json
 import math
+import os
+from typing import Any
 
 ROUND_TO = 6  # Round new lat/lon values to make obfuscation less obvious
 
@@ -57,3 +60,32 @@ def calculate_destination_point(
     final_lon = normalize_longitude(math.degrees(new_lon_rad))
 
     return round(final_lat, ROUND_TO), round(final_lon, ROUND_TO)
+
+
+def compute_obfuscated_location(
+    config: dict[str, Any], lat: float, lon: float
+) -> tuple[float, float]:
+    """
+    Apply the configured displacement (km) and bearing (degrees) to produce an
+    obfuscated coordinate. Config must have "displacement" and "bearing" keys.
+    """
+    return calculate_destination_point(lat, lon, config["displacement"], config["bearing"])
+
+
+def load_sensitive_zones() -> list[dict[str, Any]]:
+    """
+    Load sensitive zones from $PRIVATE_DATA_DIR/sensitive_waypoints.json.
+
+    Each entry must have:
+      {
+        "name": "My House",       -- human-readable label
+        "lat": 40.56789,          -- zone center latitude
+        "lon": -70.23456,         -- zone center longitude
+        "radius": 8,              -- zone radius in km (points within this are obfuscated)
+        "displacement": 6.2,      -- how far to move points, in km
+        "bearing": 137            -- direction to move points, in degrees (0=N, 90=E, ...)
+      }
+    """
+    path = os.path.join(os.environ["PRIVATE_DATA_DIR"], "sensitive_waypoints.json")
+    with open(path) as f:
+        return json.load(f)

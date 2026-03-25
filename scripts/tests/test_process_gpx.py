@@ -4,7 +4,7 @@ import tempfile
 
 import pytest
 
-from scripts.gps_utils import calculate_destination_point, haversine_distance
+from lib.gps_utils import calculate_destination_point, haversine_distance
 from scripts.process_gpx import gpx_to_geojson, process_gpx
 
 NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
@@ -69,137 +69,122 @@ def get_track_points(root: ET.Element) -> list[tuple[float, float]]:
 # --- process_gpx: waypoint obfuscation ---
 
 
-def test_named_waypoint_is_moved():
-    config = {"My House": {"name": "My House", "seed": 42, "radius": 5}}
+ZONE = {"name": "My House", "lat": 40.0, "lon": -75.0, "displacement": 4.0, "bearing": 90.0, "radius": 5}
+
+
+def test_waypoint_inside_zone_is_moved():
     gpx = make_gpx(
         waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
         track_points=[],
     )
-    root = run_process_gpx(gpx, config)
+    root = run_process_gpx(gpx, [ZONE])
     wpts = get_waypoints(root)
     assert len(wpts) == 1
     assert wpts[0]["lat"] != 40.0 or wpts[0]["lon"] != -75.0
 
 
-def test_named_waypoint_moved_within_expected_range():
-    # Waypoints are moved between 75%-100% of radius to guarantee meaningful
-    # displacement while avoiding a predictable exact-radius displacement.
-    radius = 8
-    config = {"My House": {"name": "My House", "seed": 42, "radius": radius}}
+def test_waypoint_moved_by_configured_displacement():
+    zone = {"name": "My House", "lat": 40.0, "lon": -75.0, "displacement": 6.0, "bearing": 45.0, "radius": 8}
     gpx = make_gpx(
         waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
         track_points=[],
     )
-    root = run_process_gpx(gpx, config)
+    root = run_process_gpx(gpx, [zone])
     wpt = get_waypoints(root)[0]
     dist = haversine_distance(40.0, -75.0, wpt["lat"], wpt["lon"])
-    assert radius * 0.75 <= dist <= radius + 0.001
+    assert dist == pytest.approx(6.0, abs=0.001)
 
 
-def test_named_waypoint_obfuscation_is_deterministic():
-    config = {"My House": {"name": "My House", "seed": 99, "radius": 5}}
+def test_waypoint_obfuscation_is_deterministic():
     gpx = make_gpx(
         waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
         track_points=[],
     )
-    root1 = run_process_gpx(gpx, config)
-    root2 = run_process_gpx(gpx, config)
+    root1 = run_process_gpx(gpx, [ZONE])
+    root2 = run_process_gpx(gpx, [ZONE])
     assert get_waypoints(root1) == get_waypoints(root2)
 
 
-def test_non_sensitive_waypoint_untouched():
-    config = {}
+def test_waypoint_outside_zone_untouched():
+    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 20.0, 0.0)
     gpx = make_gpx(
-        waypoints=[{"name": "Safe Place", "lat": 40.0, "lon": -75.0}],
+        waypoints=[{"name": "Safe Place", "lat": far_lat, "lon": far_lon}],
         track_points=[],
     )
-    root = run_process_gpx(gpx, config)
+    root = run_process_gpx(gpx, [ZONE])
     wpt = get_waypoints(root)[0]
-    assert wpt["lat"] == pytest.approx(40.0)
-    assert wpt["lon"] == pytest.approx(-75.0)
+    assert wpt["lat"] == pytest.approx(far_lat)
+    assert wpt["lon"] == pytest.approx(far_lon)
 
 
 # --- process_gpx: track point handling ---
 
 
-def test_track_point_at_sensitive_location_is_moved():
-    # A track point at the exact sensitive location should be relocated, not deleted
-    config = {"My House": {"name": "My House", "seed": 42, "radius": 5}}
-    gpx = make_gpx(
-        waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
-        track_points=[{"lat": 40.0, "lon": -75.0}],
-    )
-    root = run_process_gpx(gpx, config)
-    pts = get_track_points(root)
-    assert len(pts) == 1
-    lat, lon = pts[0]
-    assert lat != 40.0 or lon != -75.0
-
-
-def test_track_point_near_sensitive_location_is_deleted():
-    # A point 1 km from the sensitive location (within 5 km radius) should be removed
-    config = {"My House": {"name": "My House", "seed": 42, "radius": 5}}
-    nearby_lat, nearby_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
-    gpx = make_gpx(
-        waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
-        track_points=[{"lat": nearby_lat, "lon": nearby_lon}],
-    )
-    root = run_process_gpx(gpx, config)
-    assert get_track_points(root) == []
-
-
-def test_track_point_outside_radius_is_kept():
-    # A point 20 km away (outside 5 km radius) should be untouched
-    config = {"My House": {"name": "My House", "seed": 42, "radius": 5}}
-    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 20.0, 90.0)
-    gpx = make_gpx(
-        waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
-        track_points=[{"lat": far_lat, "lon": far_lon}],
-    )
-    root = run_process_gpx(gpx, config)
-    pts = get_track_points(root)
-    assert len(pts) == 1
-    assert pts[0] == pytest.approx((far_lat, far_lon))
-
-
-def test_track_points_mixed_near_and_far():
-    config = {"My House": {"name": "My House", "seed": 42, "radius": 5}}
-    near_lat, near_lon = calculate_destination_point(40.0, -75.0, 2.0, 180.0)
-    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 50.0, 90.0)
-    gpx = make_gpx(
-        waypoints=[{"name": "My House", "lat": 40.0, "lon": -75.0}],
-        track_points=[
-            {"lat": near_lat, "lon": near_lon},
-            {"lat": far_lat, "lon": far_lon},
-        ],
-    )
-    root = run_process_gpx(gpx, config)
-    pts = get_track_points(root)
-    assert len(pts) == 1
-    assert pts[0] == pytest.approx((far_lat, far_lon))
-
-
-# --- process_gpx: ghost point (explicit lat/lon in config) ---
-
-
-def test_ghost_point_creates_sensitive_zone_for_tracks():
-    # A config entry with explicit lat/lon (no GPX waypoint) still protects nearby tracks
-    config = {
-        "Ghost": {
-            "name": "Ghost",
-            "seed": 7,
-            "radius": 5,
-            "lat": 40.0,
-            "lon": -75.0,
-        }
-    }
+def test_track_point_inside_zone_is_moved_to_fake_location():
     near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
     gpx = make_gpx(
         waypoints=[],
         track_points=[{"lat": near_lat, "lon": near_lon}],
     )
-    root = run_process_gpx(gpx, config)
-    assert get_track_points(root) == []
+    root = run_process_gpx(gpx, [ZONE])
+    pts = get_track_points(root)
+    expected = calculate_destination_point(ZONE["lat"], ZONE["lon"], ZONE["displacement"], ZONE["bearing"])
+    assert len(pts) == 1
+    assert pts[0] == pytest.approx(expected)
+
+
+def test_track_point_outside_zone_is_kept():
+    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 20.0, 90.0)
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[{"lat": far_lat, "lon": far_lon}],
+    )
+    root = run_process_gpx(gpx, [ZONE])
+    pts = get_track_points(root)
+    assert len(pts) == 1
+    assert pts[0] == pytest.approx((far_lat, far_lon))
+
+
+def test_track_point_zone_visited_twice_gets_two_bridges():
+    # Each separate visit to a zone should produce its own bridge point.
+    near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
+    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 50.0, 90.0)
+    near2_lat, near2_lon = calculate_destination_point(40.0, -75.0, 2.0, 180.0)
+    expected_bridge = calculate_destination_point(ZONE["lat"], ZONE["lon"], ZONE["displacement"], ZONE["bearing"])
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": near_lat, "lon": near_lon},     # 1st visit — zone
+            {"lat": far_lat, "lon": far_lon},         # safe (between visits)
+            {"lat": near2_lat, "lon": near2_lon},    # 2nd visit — zone
+        ],
+    )
+    root = run_process_gpx(gpx, [ZONE])
+    pts = get_track_points(root)
+    assert len(pts) == 3
+    assert pts[0] == pytest.approx(expected_bridge)  # bridge for 1st visit
+    assert pts[1] == pytest.approx((far_lat, far_lon))
+    assert pts[2] == pytest.approx(expected_bridge)  # bridge for 2nd visit
+
+
+def test_track_points_mixed_near_and_far():
+    near_lat, near_lon = calculate_destination_point(40.0, -75.0, 2.0, 180.0)
+    near2_lat, near2_lon = calculate_destination_point(40.0, -75.0, 3.0, 90.0)
+    far_lat, far_lon = calculate_destination_point(40.0, -75.0, 50.0, 90.0)
+    gpx = make_gpx(
+        waypoints=[],
+        track_points=[
+            {"lat": near_lat, "lon": near_lon},
+            {"lat": near2_lat, "lon": near2_lon},
+            {"lat": far_lat, "lon": far_lon},
+        ],
+    )
+    root = run_process_gpx(gpx, [ZONE])
+    pts = get_track_points(root)
+    expected_bridge = calculate_destination_point(ZONE["lat"], ZONE["lon"], ZONE["displacement"], ZONE["bearing"])
+    assert len(pts) == 2
+    assert pts[0] == pytest.approx(expected_bridge)
+    assert pts[1] == pytest.approx((far_lat, far_lon))
 
 
 # --- gpx_to_geojson ---

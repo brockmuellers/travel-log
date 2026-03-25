@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.gps_utils import (
+from lib.gps_utils import (
     calculate_destination_point,
     haversine_distance,
     normalize_longitude,

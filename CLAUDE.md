@@ -97,8 +97,8 @@ Schema defined in `db/init.sql`. Key tables:
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
 - `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions
-- `db/populate_public_locations.py` — sets `location_public` on waypoints and photos; obfuscation logic duplicated from `scripts/obfuscate_points.py`
-- `scripts/obfuscate_points.py` — adds random geographic offset to sensitive coordinates in GPX files
+- `db/populate_public_locations.py` — sets `location_public` on waypoints and photos using configured displacement/bearing from `sensitive_waypoints.json`
+- `scripts/process_gpx.py` — obfuscates sensitive coordinates in GPX files using configured displacement/bearing
 - `scripts/upload_photos.py` — uploads photos from `$PRIVATE_DATA_DIR/photos/` to Cloudflare R2; skips already-uploaded files
 
 `db/reload-db.sh` runs the full local repopulation sequence: docker compose down/up → populate_waypoints → populate_photos → populate_embeddings → populate_public_locations.
@@ -140,6 +140,7 @@ Go tests use the `integration` build tag and expect `DATABASE_URL` pointing at t
 Please respect the following separation of concerns:
 * `/db/` - SQL schema, DB population scripts (`populate_*.py`), and related tests.
 * `/scripts/` - Data preparation scripts (photo captioning, waypoint description generation, coordinate obfuscation, etc.).
+* `/lib/` - Shared Python utilities used across `db/` and `scripts/` (e.g., GPS math in `gps_utils.py`).
 * `/cmd/server` - Golang backend server code.
 * `/docs/` - Any documentation.
 
