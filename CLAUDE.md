@@ -97,7 +97,7 @@ Schema defined in `db/init.sql`. Key tables:
 - `db/populate_embeddings.py` — generates 384-dim vectors for waypoint descriptions and photo captions; `get_embedding()` is the shared function used by tests
 - `scripts/describe_waypoints.py` — calls Google Gemini to generate first-person waypoint descriptions from the spouse's travel blog
 - `scripts/describe_photos.py` — calls local Ollama vision model to generate photo captions
-- `db/populate_public_locations.py` — sets `location_public` on waypoints and photos using configured displacement/bearing from `sensitive_waypoints.json`
+- `db/populate_public_locations.py` — sets `location_public` on waypoints and photos using configured displacement/bearing from `sensitive_locations.json`
 - `scripts/process_gpx.py` — obfuscates sensitive coordinates in GPX files using configured displacement/bearing
 - `scripts/upload_photos.py` — uploads photos from `$PRIVATE_DATA_DIR/photos/` to Cloudflare R2; skips already-uploaded files
 

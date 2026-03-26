@@ -7,7 +7,9 @@ from typing import Any
 
 import click
 from dotenv import load_dotenv
-from lib.gps_utils import calculate_destination_point, compute_obfuscated_location, haversine_distance, load_sensitive_zones
+from lib.gps_utils import (calculate_destination_point,
+                           compute_obfuscated_location, haversine_distance,
+                           load_sensitive_zones)
 
 # XML Namespace for GPX 1.1
 NS = {"gpx": "http://www.topografix.com/GPX/1/1"}
@@ -21,100 +23,162 @@ def process_gpx(
     tree = ET.parse(input_file)
     root = tree.getroot()
 
-    # 1. Process Waypoints (<wpt>): move any within a sensitive zone's radius.
-    # Also record the fake location for each waypoint in zone order, so the track
-    # bridging pass can align each visit's bridge point with the matching waypoint.
-    # GPX waypoints are assumed to be in chronological visit order.
-    zone_waypoint_fakes: dict[int, list[tuple[float, float]]] = {}  # zone id -> ordered fake locs
+    # Sensitive zones come in two flavors:
+    # - Named zones: matched to <wpt> elements by name, so both the waypoint and
+    #   its corresponding track point get transformed to the obfuscated location.
+    # - Ghost zones: no corresponding waypoint — the track just passes through a
+    #   sensitive area. Track points inside the radius are deleted entirely.
+    named_zones = {z["name"]: z for z in sensitive_zones if "name" in z}
+    ghost_zones = [z for z in sensitive_zones if "name" not in z]
+
+    # --- Step 1: Process waypoints (<wpt>) ---
+    # Transform each named waypoint and record its original coordinates so we can
+    # find the corresponding track point later (the track still has the original coords).
+    waypoint_configs: dict[tuple[float, float], dict[str, Any]] = {}
 
     for wpt in root.findall("gpx:wpt", NS):
-        lat = float(wpt.get("lat"))
-        lon = float(wpt.get("lon"))
-        for zone in sensitive_zones:
-            if haversine_distance(lat, lon, zone["lat"], zone["lon"]) <= zone["radius"]:
-                new_lat, new_lon = compute_obfuscated_location(zone, lat, lon)
-                wpt.set("lat", str(new_lat))
-                wpt.set("lon", str(new_lon))
-                zone_waypoint_fakes.setdefault(id(zone), []).append((new_lat, new_lon))
-                name_tag = wpt.find("gpx:name", NS)
-                name = name_tag.text if name_tag is not None else "(unnamed)"
-                print(f"  Obfuscating waypoint '{name}': {zone['displacement']:.2f}km @ {zone['bearing']:.0f}°")
-                break
+        name_el = wpt.find("gpx:name", NS)
+        if name_el is None or name_el.text not in named_zones:
+            continue
 
-    # 2. Process Tracks (<trk>): delete points within any zone's radius, inserting one
-    # bridging point per visit so the track stays connected.
-    #
-    # Bridge location priority:
-    #   a) Use the N-th waypoint's fake location for the N-th visit (aligns the track
-    #      bridge with the waypoint marker, even when visits land at slightly different
-    #      GPS coordinates due to recording drift).
-    #   b) Fall back to the zone-center fake location if there are more visits than
-    #      waypoints (e.g. ghost zones with no <wpt> tag).
-    #
-    # zones_currently_inside resets on every safe point so each separate visit gets
-    # its own bridge.
-    count_deleted = 0
-    zone_visit_counts: dict[int, int] = {}  # zone id -> number of visits seen so far
+        zone = named_zones[name_el.text]
+        orig_lat = float(wpt.get("lat"))
+        orig_lon = float(wpt.get("lon"))
+
+        waypoint_configs[(orig_lat, orig_lon)] = zone
+
+        new_lat, new_lon = compute_obfuscated_location(zone, orig_lat, orig_lon)
+        wpt.set("lat", str(new_lat))
+        wpt.set("lon", str(new_lon))
+        print(
+            f"  Obfuscated waypoint '{name_el.text}': "
+            f"({orig_lat}, {orig_lon}) -> ({new_lat}, {new_lon})"
+        )
+
+    # --- Step 2: Process track ---
+    # For each sensitive waypoint we: (A) find its exact match in the track,
+    # delete nearby track points that reveal the real location, and move the
+    # match to the obfuscated coords. Then (B) scrub any ghost zones.
+    matched_waypoints: set[tuple[float, float]] = set()
 
     for trk in root.findall("gpx:trk", NS):
         for trkseg in trk.findall("gpx:trkseg", NS):
-            points_to_keep = []
-            zones_currently_inside: set[int] = set()
+            # Step 2A: Waypoint visits — one pass per transformed waypoint.
+            for (wpt_lat, wpt_lon), zone in waypoint_configs.items():
+                points = trkseg.findall("gpx:trkpt", NS)
 
-            for trkpt in trkseg.findall("gpx:trkpt", NS):
-                pt_lat = float(trkpt.get("lat"))
-                pt_lon = float(trkpt.get("lon"))
+                # Our GPX data duplicates the <wpt> coordinates as a <trkpt>,
+                # so we can find the waypoint's position in the track by exact match.
+                matching_indices = [
+                    i
+                    for i, pt in enumerate(points)
+                    if float(pt.get("lat")) == wpt_lat
+                    and float(pt.get("lon")) == wpt_lon
+                ]
 
-                matched_zone = next(
-                    (z for z in sensitive_zones
-                     if haversine_distance(pt_lat, pt_lon, z["lat"], z["lon"]) <= z["radius"]),
-                    None,
-                )
+                if len(matching_indices) > 1:
+                    raise SystemExit(
+                        f"[ERROR] Multiple track points match waypoint at "
+                        f"({wpt_lat}, {wpt_lon}). Found {len(matching_indices)} matches."
+                    )
 
-                if matched_zone is None:
-                    # Outside all zones — reset so future zone visits get a fresh bridge.
-                    zones_currently_inside.clear()
-                    points_to_keep.append(trkpt)
-                else:
-                    zone_id = id(matched_zone)
-                    if zone_id not in zones_currently_inside:
-                        # First point of a new visit — place a bridge point.
-                        zones_currently_inside.add(zone_id)
-                        visit_idx = zone_visit_counts.get(zone_id, 0)
-                        zone_visit_counts[zone_id] = visit_idx + 1
-                        fakes = zone_waypoint_fakes.get(zone_id, [])
-                        if visit_idx < len(fakes):
-                            fake_lat, fake_lon = fakes[visit_idx]
-                        else:
-                            fake_lat, fake_lon = compute_obfuscated_location(
-                                matched_zone, matched_zone["lat"], matched_zone["lon"]
+                if not matching_indices:
+                    continue
+
+                matched_waypoints.add((wpt_lat, wpt_lon))
+
+                match_idx = matching_indices[0]
+                zone_lat, zone_lon = zone["lat"], zone["lon"]
+                radius = zone["radius"]
+
+                # Delete every track point within the zone radius except the match.
+                # These are approach/departure points that would reveal the real location.
+                to_remove: list[int] = []
+
+                for i, pt in enumerate(points):
+                    if i == match_idx:
+                        continue
+                    pt_lat = float(pt.get("lat"))
+                    pt_lon = float(pt.get("lon"))
+                    # Don't delete track points that match other waypoints — they'll
+                    # be transformed in their own pass.
+                    if (pt_lat, pt_lon) in waypoint_configs:
+                        continue
+                    if haversine_distance(zone_lat, zone_lon, pt_lat, pt_lon) <= radius:
+                        # If this error occurs with real-world data, we'll need to
+                        # ensure that transport modes are correctly handled.
+                        if _get_transport_mode(pt) is not None:
+                            raise SystemExit(
+                                f"[ERROR] Track point at ({pt_lat}, {pt_lon}) near "
+                                f"waypoint ({wpt_lat}, {wpt_lon}) has transport mode "
+                                f"'{_get_transport_mode(pt)}'. Transforming points with "
+                                "transport modes is not yet supported."
                             )
-                        trkpt.set("lat", str(fake_lat))
-                        trkpt.set("lon", str(fake_lon))
-                        points_to_keep.append(trkpt)
-                    else:
-                        count_deleted += 1
+                        to_remove.append(i)
 
-            # Rebuild the segment with only kept points
-            trkseg[:] = points_to_keep
+                for i in sorted(to_remove, reverse=True):
+                    trkseg.remove(points[i])
 
-    # Sanity check: each zone's track visit count should match its waypoint count.
-    # A mismatch means the track passed through the zone without a corresponding
-    # waypoint (or vice versa), which breaks the visit-to-waypoint alignment.
-    for zone in sensitive_zones:
-        zone_id = id(zone)
-        n_visits = zone_visit_counts.get(zone_id, 0)
-        n_waypoints = len(zone_waypoint_fakes.get(zone_id, []))
-        if n_visits != n_waypoints:
-            print(
-                f"  [WARN] Zone '{zone['name']}': {n_visits} track visit(s) but "
-                f"{n_waypoints} waypoint(s) — bridge/waypoint alignment may be off. "
-                f"Check for pass-throughs or missing waypoints. "
-                f"(If this zone has no corresponding GPX waypoint, this is expected and harmless.)"
-            )
+                # Move the matching track point to the obfuscated location so the
+                # track connects to the transformed waypoint rather than the real one.
+                points = trkseg.findall("gpx:trkpt", NS)
+                earlier_removals = sum(1 for i in to_remove if i < match_idx)
+                new_match_idx = match_idx - earlier_removals
+                match_pt = points[new_match_idx]
+                new_lat, new_lon = compute_obfuscated_location(
+                    zone, wpt_lat, wpt_lon
+                )
+                match_pt.set("lat", str(new_lat))
+                match_pt.set("lon", str(new_lon))
 
-    print("Processing complete.")
-    print(f"  - Track points deleted: {count_deleted}")
+            # Step 2B: Ghost zones — sensitive areas with no waypoint.
+            # Unlike named zones, there's no waypoint to relocate, so we simply
+            # delete every track point inside the radius. We need to guard against
+            # accidentally deleting a point that corresponds to a <wpt>, which
+            # would leave the waypoint dangling (not connected to the track).
+            all_wpt_coords: set[tuple[float, float]] = set()
+            for wpt in root.findall("gpx:wpt", NS):
+                all_wpt_coords.add((float(wpt.get("lat")), float(wpt.get("lon"))))
+            # Include pre-transformation coords too — a waypoint that wasn't in a
+            # named zone still has its original coords in the track.
+            all_wpt_coords.update(waypoint_configs.keys())
+
+            for zone in ghost_zones:
+                zone_lat, zone_lon = zone["lat"], zone["lon"]
+                radius = zone["radius"]
+
+                points = trkseg.findall("gpx:trkpt", NS)
+                to_remove_els: list[ET.Element] = []
+
+                for pt in points:
+                    pt_lat = float(pt.get("lat"))
+                    pt_lon = float(pt.get("lon"))
+                    if haversine_distance(zone_lat, zone_lon, pt_lat, pt_lon) <= radius:
+                        if (pt_lat, pt_lon) in all_wpt_coords:
+                            # TODO: change back to an error once input data is fixed.
+                            print(
+                                f"[WARNING] Ghost zone at ({zone_lat}, {zone_lon}) "
+                                f"overlaps with waypoint at ({pt_lat}, {pt_lon}). "
+                                "A ghost zone overlapping with a waypoint will result "
+                                "in waypoints that are not connected to the track."
+                            )
+                            continue
+                        to_remove_els.append(pt)
+
+                for pt in to_remove_els:
+                    trkseg.remove(pt)
+
+    # Every transformed waypoint must have a corresponding track point — if one
+    # is missing it means the obfuscated <wpt> has no anchor in the track, which
+    # will produce a dangling waypoint on the map.
+    unmatched = set(waypoint_configs.keys()) - matched_waypoints
+    if unmatched:
+        coords = ", ".join(f"({lat}, {lon})" for lat, lon in unmatched)
+        raise SystemExit(
+            f"[ERROR] Transformed waypoint(s) have no matching track point: {coords}. "
+            "The obfuscated waypoint(s) will not be connected to the track."
+        )
+
     return root
 
 

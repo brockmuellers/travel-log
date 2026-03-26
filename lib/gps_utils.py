@@ -74,49 +74,43 @@ def compute_obfuscated_location(
 
 def load_sensitive_zones() -> list[dict[str, Any]]:
     """
-    Load sensitive zones from $PRIVATE_DATA_DIR/sensitive_waypoints.json.
+    Load sensitive zones from $PRIVATE_DATA_DIR/sensitive_locations.json.
 
     FORMAT
     ------
     The file is a JSON array. Each entry represents one sensitive location:
 
       {
-        "name": "My House",     -- human-readable label (used in log output only)
-        "lat": 40.56789,        -- zone center latitude  (decimal degrees)
-        "lon": -70.23456,       -- zone center longitude (decimal degrees)
-        "radius": 8,            -- zone radius in km; any GPS point within this
-                                   distance is considered sensitive
-        "displacement": 6.2,   -- how far to move obfuscated points, in km
-        "bearing": 137          -- direction to move them (0 = N, 90 = E, 180 = S, ...)
+        "key": "My House",           -- human-readable label (used in log output only)
+        "name": "San Francisco",     -- optional waypoint name that can be matched to one
+                                        or more waypoints
+        "lat": 40.56789,             -- zone center latitude  (decimal degrees)
+        "lon": -70.23456,            -- zone center longitude (decimal degrees)
+        "radius": 8,                 -- zone radius in km; any GPS point within this
+                                        distance is considered sensitive
+        "displacement": 6.2,         -- how far to move obfuscated points, in km
+        "bearing": 137               -- direction to move them (0 = N, 90 = E, 180 = S, ...)
       }
 
     One entry per sensitive location, regardless of how many times it was visited.
+    Each "key" and "name" will be unique across entries.
     The fake location is fully determined by (lat, lon, displacement, bearing) —
     there is no randomness.
 
-    MULTI-VISIT LOCATIONS (e.g. visited Freeman twice)
+    MULTI-VISIT LOCATIONS (e.g. visited San Francisco twice)
     ---------------------------------------------------
     Use a single entry. The lat/lon should be set to the zone center — typically
     the GPS coordinates of the first visit's waypoint, or a representative point
-    for the area.
-
-    For GPX processing, each <wpt> element that falls within the zone radius is
-    collected in order, and each track visit through the zone gets its bridge point
-    aligned to the corresponding waypoint. This means:
-      - GPX waypoints for a multi-visit location must appear in the file in
-        chronological visit order (which is normally the case).
-      - If the number of track visits doesn't match the number of waypoints, a
-        [WARN] is printed. This is expected and harmless for "ghost zones" (see
-        below); for real multi-visit locations it indicates a pass-through or a
-        missing waypoint that may cause slight bridge/marker misalignment.
+    for the area. The coordinates of each matching waypoint may be slightly
+    different due to GPS drift.
 
     GHOST ZONES (sensitive area with no GPX waypoint)
     --------------------------------------------------
     If a sensitive zone has no corresponding <wpt> in the GPX (e.g. a location
     that appears only as track points, not as a named stop), still add an entry
-    here. The track bridge will be computed from the zone center
-    (lat + displacement @ bearing). The [WARN] about 0 waypoints is harmless.
+    here, but omit the "name" field. The absence of "name" is how ghost zones
+    are identified — their track points are deleted rather than relocated.
     """
-    path = os.path.join(os.environ["PRIVATE_DATA_DIR"], "sensitive_waypoints.json")
+    path = os.path.join(os.environ["PRIVATE_DATA_DIR"], "sensitive_locations.json")
     with open(path) as f:
         return json.load(f)

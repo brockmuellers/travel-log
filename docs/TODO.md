@@ -13,9 +13,10 @@
 
 **Medium:**
 * Improve copy on waypoint search (what can you search for and what do results mean, as well as "first search may take a while...")
-* Display clickable waypoints on map
 * Waypoint search: explore hiding results with a large distance
 * Explore different embeddings
+* There is no public location calculated for tracks/track points
+* Get iNaturalist data in DB
 
 **Low:**
 * Sort inaturalist observations by rarity so the rarest in a region shows up on top
@@ -41,6 +42,7 @@
 * Fill in beginning waypoints for West Coast trip (update trips.json too)
 * Finish privacy-screening photos
 * Smarter photo-to-waypoint linking for travel days and time changes!
+* Victoria waypoints need different names for better obfuscation - can then make the second one a named location in the config file, and then change the "ghost zone overlap" warn back to an error
 
 **Low:**
 * A few photos don't have time_taken - missing from exif?

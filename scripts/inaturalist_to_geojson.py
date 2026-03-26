@@ -6,8 +6,8 @@ from typing import Any
 
 import click
 from dotenv import load_dotenv
-
-from lib.gps_utils import compute_obfuscated_location, haversine_distance, load_sensitive_zones
+from lib.gps_utils import (compute_obfuscated_location, haversine_distance,
+                           load_sensitive_zones)
 
 
 def build_sensitive_zones(sensitive_zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -16,7 +16,7 @@ def build_sensitive_zones(sensitive_zones: list[dict[str, Any]]) -> list[dict[st
     for config in sensitive_zones:
         zones.append({"lat": config["lat"], "lon": config["lon"], "radius": config["radius"],
                       "displacement": config["displacement"], "bearing": config["bearing"]})
-        print(f"  [Sensitive zone] '{config['name']}': radius={config['radius']}km, displacement=({config['displacement']:.2f}km @ {config['bearing']:.1f}°)")
+        print(f"  [Sensitive zone] '{config['key']}': radius={config['radius']}km, displacement=({config['displacement']:.2f}km @ {config['bearing']:.1f}°)")
     return zones
 
 
@@ -45,7 +45,7 @@ def convert_inat_csv_to_geojson(
         taxa_json (str): Path to the json file containing inaturalist taxon data
     """
 
-    # --- NEW: Load Taxa Data for Lookup ---
+    # Load taxa data for global observation count lookup
     print(f"Loading taxon data from {taxa_json}...")
     taxa_lookup = {}
     try:
@@ -136,7 +136,7 @@ def run(input_csv: str, deploy_path: str | None) -> None:
     Convert iNaturalist CSV export to a GeoJSON FeatureCollection for map view.
 
     Uses taxon data from PUBLIC_DATA_DIR for global observation counts.
-    Obfuscates observations near sensitive locations using sensitive_waypoints.json.
+    Obfuscates observations near sensitive locations using sensitive_locations.json.
     Output is written to FINAL_DATA_DIR/inaturalist.geojson.
 
     INPUT_CSV: Path to the input CSV file.

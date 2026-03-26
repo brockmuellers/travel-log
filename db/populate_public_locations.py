@@ -1,7 +1,7 @@
 """
 Populate location_public columns for waypoints and photos.
 
-Any waypoint or photo within the radius of a sensitive zone (from sensitive_waypoints.json)
+Any waypoint or photo within the radius of a sensitive zone (from sensitive_locations.json)
 has its location displaced by that zone's configured displacement and bearing.
 All other rows have their real location copied as-is.
 """
@@ -13,8 +13,8 @@ from typing import Any
 import psycopg2
 import psycopg2.extensions
 from dotenv import load_dotenv
-
-from lib.gps_utils import compute_obfuscated_location, haversine_distance, load_sensitive_zones
+from lib.gps_utils import (compute_obfuscated_location, haversine_distance,
+                           load_sensitive_zones)
 
 
 def _matching_zone(lat: float, lon: float, zones: list[dict[str, Any]]) -> dict[str, Any] | None:
