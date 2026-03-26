@@ -325,6 +325,53 @@ def test_ghost_zone_overlapping_waypoint_warns_not_errors(capsys):
     assert (WPT_LAT, WPT_LON) in trkpts
 
 
+def test_multi_visit_obfuscated_point_not_deleted_by_second_pass():
+    # Scenario: "Home" is visited twice. Both waypoints share the same zone.
+    # Visit 1 is processed first — its track point is moved to obf_1 (displacement
+    # < radius, so obf_1 lands inside the zone radius). When visit 2's pass then
+    # scans for nearby points to delete, obf_1 is within range. Pre-fix it gets
+    # deleted; post-fix it is recognised as an already-transformed point and skipped.
+    from lib.gps_utils import compute_obfuscated_location
+
+    zone_lat, zone_lon = 10.0, 20.0
+    # displacement (0.5 km) < radius (2 km) so obf_1 lands inside the zone radius.
+    home = {
+        "key": "Home", "name": "Home",
+        "lat": zone_lat, "lon": zone_lon,
+        "radius": 2.0,
+        "displacement": 0.5,
+        "bearing": 0,
+    }
+
+    # Two visits: nearly identical coords, both at the zone centre.
+    wpt1_lat, wpt1_lon = zone_lat, zone_lon
+    wpt2_lat, wpt2_lon = calculate_destination_point(zone_lat, zone_lon, 0.1, 45)
+
+    obf1 = compute_obfuscated_location(home, wpt1_lat, wpt1_lon)
+    obf2 = compute_obfuscated_location(home, wpt2_lat, wpt2_lon)
+
+    far_lat, far_lon = calculate_destination_point(zone_lat, zone_lon, 10.0, 270)
+
+    gpx = make_gpx(
+        waypoints=[
+            {"lat": wpt1_lat, "lon": wpt1_lon, "name": "Home"},
+            {"lat": wpt2_lat, "lon": wpt2_lon, "name": "Home"},
+        ],
+        track_points=[
+            {"lat": far_lat, "lon": far_lon},
+            {"lat": wpt1_lat, "lon": wpt1_lon},   # visit 1 anchor
+            {"lat": far_lat, "lon": far_lon},
+            {"lat": wpt2_lat, "lon": wpt2_lon},   # visit 2 anchor
+            {"lat": far_lat, "lon": far_lon},
+        ],
+    )
+    root = run_process_gpx(gpx, [home])
+    trkpts = get_track_points(root)
+
+    assert obf1 in trkpts, "visit 1's obfuscated track point was deleted during visit 2's pass"
+    assert obf2 in trkpts, "visit 2's obfuscated track point is missing"
+
+
 # --- gpx_to_geojson ---
 
 

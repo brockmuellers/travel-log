@@ -35,6 +35,7 @@ def process_gpx(
     # Transform each named waypoint and record its original coordinates so we can
     # find the corresponding track point later (the track still has the original coords).
     waypoint_configs: dict[tuple[float, float], dict[str, Any]] = {}
+    updated_waypoint_coords: list[tuple[float, float]] = []
 
     for wpt in root.findall("gpx:wpt", NS):
         name_el = wpt.find("gpx:name", NS)
@@ -50,6 +51,7 @@ def process_gpx(
         new_lat, new_lon = compute_obfuscated_location(zone, orig_lat, orig_lon)
         wpt.set("lat", str(new_lat))
         wpt.set("lon", str(new_lon))
+        updated_waypoint_coords.append((new_lat, new_lon))
         print(
             f"  Obfuscated waypoint '{name_el.text}': "
             f"({orig_lat}, {orig_lon}) -> ({new_lat}, {new_lon})"
@@ -100,9 +102,11 @@ def process_gpx(
                         continue
                     pt_lat = float(pt.get("lat"))
                     pt_lon = float(pt.get("lon"))
-                    # Don't delete track points that match other waypoints — they'll
-                    # be transformed in their own pass.
+                    # Don't delete track points that match other waypoints, whether they've been
+                    # transformed yet or not — they'll be transformed in their own pass.
                     if (pt_lat, pt_lon) in waypoint_configs:
+                        continue
+                    if (pt_lat, pt_lon) in updated_waypoint_coords:
                         continue
                     if haversine_distance(zone_lat, zone_lon, pt_lat, pt_lon) <= radius:
                         # If this error occurs with real-world data, we'll need to
