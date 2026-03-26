@@ -15,7 +15,7 @@ from scripts.inaturalist_to_geojson import (
 # --- Helpers ---
 
 SENSITIVE_CONFIG = [
-    {"name": "My House", "displacement": 3.5, "bearing": 45.0, "radius": 5, "lat": 40.0, "lon": -75.0}
+    {"key": "My House", "displacement": 3.5, "bearing": 45.0, "radius": 5, "lat": 40.0, "lon": -75.0}
 ]
 
 
@@ -94,7 +94,7 @@ def test_apply_obfuscation_different_points_in_zone_get_different_locations():
 def test_observation_inside_zone_is_moved():
     zones = build_sensitive_zones(SENSITIVE_CONFIG)
     near_lat, near_lon = calculate_destination_point(40.0, -75.0, 1.0, 0.0)
-    csv = make_csv([{"latitude": near_lat, "longitude": near_lon, "common_name": "Robin"}])
+    csv = make_csv([{"latitude": near_lat, "longitude": near_lon, "common_name": "Robin", "observed_on": "2025-06-01"}])
     features = run_convert(csv, zones)
     assert len(features) == 1
     out_lon, out_lat = features[0]["geometry"]["coordinates"]
@@ -106,7 +106,7 @@ def test_observation_inside_zone_is_moved():
 def test_observation_outside_zone_is_unchanged():
     zones = build_sensitive_zones(SENSITIVE_CONFIG)
     far_lat, far_lon = calculate_destination_point(40.0, -75.0, 20.0, 90.0)
-    csv = make_csv([{"latitude": far_lat, "longitude": far_lon, "common_name": "Robin"}])
+    csv = make_csv([{"latitude": far_lat, "longitude": far_lon, "common_name": "Robin", "observed_on": "2025-06-01"}])
     features = run_convert(csv, zones)
     out_lon, out_lat = features[0]["geometry"]["coordinates"]
     assert out_lat == pytest.approx(far_lat)
@@ -115,8 +115,35 @@ def test_observation_outside_zone_is_unchanged():
 
 def test_no_zones_leaves_all_observations_unchanged():
     lat, lon = 40.0, -75.0
-    csv = make_csv([{"latitude": lat, "longitude": lon, "common_name": "Robin"}])
+    csv = make_csv([{"latitude": lat, "longitude": lon, "common_name": "Robin", "observed_on": "2025-06-01"}])
     features = run_convert(csv, zones=None)
     out_lon, out_lat = features[0]["geometry"]["coordinates"]
     assert out_lat == pytest.approx(lat)
     assert out_lon == pytest.approx(lon)
+
+
+# --- date filtering ---
+
+
+def test_observation_within_date_range_is_included():
+    csv = make_csv([{"latitude": 45.0, "longitude": -73.0, "common_name": "Robin", "observed_on": "2024-07-20"}])
+    features = run_convert(csv)
+    assert len(features) == 1
+
+
+def test_observation_before_date_range_is_excluded():
+    csv = make_csv([{"latitude": 45.0, "longitude": -73.0, "common_name": "Robin", "observed_on": "2024-07-19"}])
+    features = run_convert(csv)
+    assert len(features) == 0
+
+
+def test_observation_after_date_range_is_excluded():
+    csv = make_csv([{"latitude": 45.0, "longitude": -73.0, "common_name": "Robin", "observed_on": "2025-12-02"}])
+    features = run_convert(csv)
+    assert len(features) == 0
+
+
+def test_observation_on_last_day_of_range_is_included():
+    csv = make_csv([{"latitude": 45.0, "longitude": -73.0, "common_name": "Robin", "observed_on": "2025-12-01"}])
+    features = run_convert(csv)
+    assert len(features) == 1

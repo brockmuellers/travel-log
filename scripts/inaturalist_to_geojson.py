@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 from lib.gps_utils import (compute_obfuscated_location, haversine_distance,
                            load_sensitive_zones)
 
+# Trip date range filter (inclusive)
+DATE_MIN = "2024-07-20"
+DATE_MAX = "2025-12-01"
+
 
 def build_sensitive_zones(sensitive_zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Build sensitive zone dicts from config entries."""
@@ -79,6 +83,10 @@ def convert_inat_csv_to_geojson(
 
             # Skip if coordinates are 0,0 (unless you actually went to Null Island)
             if lat == 0 and lon == 0:
+                continue
+
+            date = row.get("observed_on", "").strip()
+            if not (DATE_MIN <= date <= DATE_MAX):
                 continue
 
             if sensitive_zones:
