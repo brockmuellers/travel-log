@@ -20,6 +20,7 @@
 
 **Low:**
 * Sort inaturalist observations by rarity so the rarest in a region shows up on top
+* Certain ebird hotspot entries can't be filtered by trip when using the current FE date filter (see console)
 
 ### Internal
 
@@ -27,7 +28,6 @@
 * Set up a local test DB
 * Python tests for data transformation (and maybe full integration test?)
 * Explore further Claude configuration
-* Duplicated point obfuscation code in db waypoint reload scripts?
 
 **Low:**
 * Explore using gorm

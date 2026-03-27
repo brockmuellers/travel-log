@@ -88,10 +88,15 @@ def test_single_checklist_single_species():
     assert f["properties"]["title"] == "City Park"
     assert f["properties"]["location_id"] == "L1"
     assert f["properties"]["hotspot_url"] == "https://ebird.org/hotspot/L1"
-    assert f["properties"]["checklist_ids"] == ["S123"]
-    assert f["properties"]["checklist_urls"] == ["https://ebird.org/checklist/S123"]
+    assert f["properties"]["checklists"] == [
+        {
+            "id": "S123", "url": "https://ebird.org/checklist/S123",
+            "date": "2025-01-01", "start_time": "", "duration_min": None,
+            "individual_count": 0, "species_count": 1,
+        }
+    ]
     assert f["properties"]["species_count"] == 1
-    assert f["properties"]["dates"] == ["2025-01-01"]
+    assert f["properties"]["species"] == [{"common_name": "Robin", "scientific_name": ""}]
 
 
 def test_multiple_species_at_same_hotspot_aggregated():
@@ -104,7 +109,9 @@ def test_multiple_species_at_same_hotspot_aggregated():
     features = run_convert(csv)
     assert len(features) == 1
     assert features[0]["properties"]["species_count"] == 2
-    assert features[0]["properties"]["checklist_ids"] == ["S1"]
+    assert len(features[0]["properties"]["checklists"]) == 1
+    assert features[0]["properties"]["checklists"][0]["id"] == "S1"
+    assert features[0]["properties"]["checklists"][0]["species_count"] == 2
 
 
 def test_two_distinct_hotspots_produce_two_features():
@@ -149,9 +156,30 @@ def test_multiple_checklists_at_same_hotspot_merged():
     ])
     features = run_convert(csv)
     assert len(features) == 1
-    assert set(features[0]["properties"]["checklist_ids"]) == {"S1", "S2"}
+    checklists = features[0]["properties"]["checklists"]
+    assert {c["id"] for c in checklists} == {"S1", "S2"}
     assert features[0]["properties"]["species_count"] == 2
-    assert set(features[0]["properties"]["dates"]) == {"2025-01-01", "2025-02-01"}
+    assert {c["date"] for c in checklists} == {"2025-01-01", "2025-02-01"}
+
+
+def test_checklist_fields_duration_count_time_scientific_name():
+    csv = make_csv([
+        {"Submission ID": "S1", "Common Name": "Robin", "Scientific Name": "Turdus migratorius",
+         "Location ID": "L1", "Location": "Park", "Latitude": 45.0, "Longitude": -73.0,
+         "Date": "2025-01-01", "Time": "07:30", "Duration (Min)": "45", "Count": "3"},
+        {"Submission ID": "S1", "Common Name": "Sparrow", "Scientific Name": "Passer domesticus",
+         "Location ID": "L1", "Location": "Park", "Latitude": 45.0, "Longitude": -73.0,
+         "Date": "2025-01-01", "Time": "07:30", "Duration (Min)": "45", "Count": "X"},
+    ])
+    features = run_convert(csv)
+    cl = features[0]["properties"]["checklists"][0]
+    assert cl["start_time"] == "07:30"
+    assert cl["duration_min"] == 45
+    assert cl["individual_count"] == 3  # "X" count skipped
+    assert cl["species_count"] == 2
+    species = features[0]["properties"]["species"]
+    assert {"common_name": "Robin", "scientific_name": "Turdus migratorius"} in species
+    assert {"common_name": "Sparrow", "scientific_name": "Passer domesticus"} in species
 
 
 def test_hotspot_inside_zone_is_moved():

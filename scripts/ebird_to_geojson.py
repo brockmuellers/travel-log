@@ -55,13 +55,12 @@ def convert_ebird_csv_to_geojson(
     print(f"Reading {input_csv}...")
 
     # hotspot_id -> aggregated data
+    # checklists: checklist_id -> {date, species}
     hotspots: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "name": "",
         "lat": 0.0,
         "lon": 0.0,
-        "species": set(),
-        "checklist_ids": set(),
-        "dates": set(),
+        "checklists": {},
     })
 
     with open(input_csv, "r", encoding="utf-8") as f:
@@ -88,13 +87,34 @@ def convert_ebird_csv_to_geojson(
             if not (DATE_MIN <= date <= DATE_MAX):
                 continue
 
-            hs["species"].add(row.get("Common Name", "").strip())
-            hs["checklist_ids"].add(row.get("Submission ID", "").strip())
-            if date:
-                hs["dates"].add(date)
+            # Merlin checklists are intentionally excluded. Merlin passively accumulates
+            # species in the background without deliberate counting effort, making its
+            # species counts, individual counts, and durations unreliable. It also tends
+            # to duplicate species already recorded in intentional checklists nearby.
+            # Protocol string in eBird exports: "eBird - Merlin Bird ID"
+            if row.get("Protocol", "").strip() == "eBird - Merlin Bird ID":
+                continue
+
+            checklist_id = row.get("Submission ID", "").strip()
+            if checklist_id not in hs["checklists"]:
+                hs["checklists"][checklist_id] = {
+                    "date": date,
+                    "start_time": row.get("Time", "").strip(),
+                    "duration_min": row.get("Duration (Min)", "").strip() or None,
+                    "individual_count": 0,
+                    "species": {},  # common_name -> scientific_name
+                }
+            cl = hs["checklists"][checklist_id]
+            common = row.get("Common Name", "").strip()
+            scientific = row.get("Scientific Name", "").strip()
+            cl["species"][common] = scientific
+            try:
+                cl["individual_count"] += int(row.get("Count", 0))
+            except (ValueError, TypeError):
+                pass  # "X" or blank — skip
 
     print(f"Filtering to date range {DATE_MIN} – {DATE_MAX}...")
-    hotspots = {lid: hs for lid, hs in hotspots.items() if hs["checklist_ids"]}
+    hotspots = {lid: hs for lid, hs in hotspots.items() if hs["checklists"]}
 
     features = []
     for location_id, hs in hotspots.items():
@@ -102,7 +122,29 @@ def convert_ebird_csv_to_geojson(
         if sensitive_zones:
             lat, lon = apply_obfuscation(lat, lon, sensitive_zones)
 
-        checklist_ids = sorted(hs["checklist_ids"])
+        checklists = sorted(
+            [
+                {
+                    "id": cid,
+                    "url": f"https://ebird.org/checklist/{cid}",
+                    "date": cl["date"],
+                    "start_time": cl["start_time"],
+                    "duration_min": int(cl["duration_min"]) if cl["duration_min"] else None,
+                    "individual_count": cl["individual_count"],
+                    "species_count": len(cl["species"]),
+                }
+                for cid, cl in hs["checklists"].items()
+            ],
+            key=lambda c: c["date"],
+        )
+        all_species_map: dict[str, str] = {}
+        for cl in hs["checklists"].values():
+            all_species_map.update(cl["species"])
+        species_list = sorted(
+            [{"common_name": cn, "scientific_name": sn} for cn, sn in all_species_map.items()],
+            key=lambda s: s["common_name"],
+        )
+        dates = [c["date"] for c in checklists]
         feature = {
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
@@ -110,12 +152,11 @@ def convert_ebird_csv_to_geojson(
                 "title": hs["name"],
                 "location_id": location_id,
                 "hotspot_url": f"https://ebird.org/hotspot/{location_id}",
-                "checklist_ids": checklist_ids,
-                "checklist_urls": [f"https://ebird.org/checklist/{cid}" for cid in checklist_ids],
-                "species_count": len(hs["species"]),
-                "dates": sorted(hs["dates"]),
-                "min_date": min(hs["dates"]),
-                "max_date": max(hs["dates"]),
+                "checklists": checklists,
+                "species": species_list,
+                "species_count": len(species_list),
+                "min_date": dates[0],
+                "max_date": dates[-1],
                 # TODO: lifers count (requires personal life list data)
                 # TODO: rarity species count (requires eBird rarity threshold data)
                 # TODO: global checklist count at this hotspot (requires eBird API)
