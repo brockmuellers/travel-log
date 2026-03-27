@@ -70,17 +70,21 @@ class Waypoint(BaseModel):
 def validate_waypoints(
     input_data: list[dict[str, Any]] | str,
     output_data: list[dict[str, Any]] | str,
-) -> tuple[bool, list[str]]:
+) -> tuple[bool, list[str], list[str]]:
     """
     Validates that output_data matches input_data exactly,
     except for the 'description' field which must be populated.
+
+    Name mismatches are treated as warnings (logged but not failures) because
+    Gemini's constrained decoding (response_schema) can corrupt non-ASCII characters
+    in string fields. We rely on 'time' (ASCII-safe) to catch real ordering issues.
 
     Args:
         input_data: List[dict] or JSON string (the original source of truth)
         output_data: List[dict] or JSON string (the AI response)
 
     Returns:
-        (bool, list[str]): (IsValid, List of error messages)
+        (bool, list[str], list[str]): (IsValid, List of error messages, List of warnings)
     """
     # 1. Normalize Strings to Objects
     # TODO shouldn't be necessary
@@ -91,6 +95,7 @@ def validate_waypoints(
 
     # 3. Validation Logic
     errors = []
+    warnings = []
     valid = True
 
     # Check Length
@@ -108,21 +113,30 @@ def validate_waypoints(
                 errors.append(f"Item {i}: Missing key '{key}'.")
                 continue
 
-            # B. Validate Non-Description Fields (Must be Exact Match)
+            # B. Validate Non-Description Fields
             if key != "description":
                 if generated[key] != original_val:
-                    valid = False
-                    errors.append(
-                        f"Item {i} mismatch on '{key}': "
-                        f"Expected '{original_val}', Got '{generated[key]}'"
-                    )
+                    if key == "name":
+                        # Name mismatches are warnings only — constrained decoding corrupts
+                        # non-ASCII chars (e.g. 'ñ' → '\x00a'). 'time' is the reliable
+                        # ordering check; callers should restore the original name afterward.
+                        warnings.append(
+                            f"Item {i} name encoding issue: "
+                            f"Expected '{original_val}', Got '{generated[key]}'"
+                        )
+                    else:
+                        valid = False
+                        errors.append(
+                            f"Item {i} mismatch on '{key}': "
+                            f"Expected '{original_val}', Got '{generated[key]}'"
+                        )
 
             # C. Validate Description Field (Must be Filled)
             else:
                 if not generated[key] or len(generated[key].strip()) == 0:
                     errors.append(f"Item {i}: 'description' field is empty.")
 
-    return valid, errors
+    return valid, errors, warnings
 
 
 def describe_waypoints(
@@ -194,7 +208,13 @@ def describe_waypoints(
                 print()
 
     # print validation results
-    is_valid, errors = validate_waypoints(waypoints_data, output)
+    is_valid, errors, warnings = validate_waypoints(waypoints_data, output)
+    for w in warnings:
+        print(f"WARNING: {w}")
+    if warnings:
+        # Restore original names to fix constrained-decoding encoding corruption
+        for original, generated in zip(waypoints_data, output):
+            generated["name"] = original["name"]
     if is_valid:
         print("Output valid!")
     else:

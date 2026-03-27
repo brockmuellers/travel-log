@@ -42,6 +42,9 @@
 * Smarter photo-to-waypoint linking for travel days and time changes!
 * Victoria waypoints need different names for better obfuscation - can then make the second one a named location in the config file, and then change the "ghost zone overlap" warn back to an error
 
+**Medium:**
+* Make sure that waypoints with special characters in their name are correctly populated with description in the DB
+
 **Low:**
 * A few photos don't have time_taken - missing from exif?
 
