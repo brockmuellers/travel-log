@@ -39,6 +39,7 @@ def convert_ebird_csv_to_geojson(
     input_csv: str,
     output_geojson: str,
     sensitive_zones: list[dict[str, Any]] | None = None,
+    exclude_merlin: bool = True,
 ) -> bool:
     """
     Converts an eBird MyEBirdData CSV export into a GeoJSON FeatureCollection.
@@ -51,6 +52,7 @@ def convert_ebird_csv_to_geojson(
         input_csv: Path to the input CSV file.
         output_geojson: Path where the output GeoJSON file will be saved.
         sensitive_zones: Optional list of obfuscation zones.
+        exclude_merlin: If True, filter out likely Merlin passive-detection checklists.
     """
     print(f"Reading {input_csv}...")
 
@@ -110,17 +112,18 @@ def convert_ebird_csv_to_geojson(
                 if count_raw != "X":
                     cl["all_counts_x"] = False  # blank or unexpected value
 
-    # Exclude likely Merlin checklists: casual observations with a single species
-    # and all counts recorded as "X" (Merlin's passive-detection signature).
-    for hs in hotspots.values():
-        hs["checklists"] = {
-            cid: cl for cid, cl in hs["checklists"].items()
-            if not (
-                cl["protocol"] == "eBird - Casual Observation"
-                and len(cl["species"]) == 1
-                and cl["all_counts_x"]
-            )
-        }
+    if exclude_merlin:
+        # Exclude likely Merlin checklists: casual observations with a single species
+        # and all counts recorded as "X" (Merlin's passive-detection signature).
+        for hs in hotspots.values():
+            hs["checklists"] = {
+                cid: cl for cid, cl in hs["checklists"].items()
+                if not (
+                    cl["protocol"] == "eBird - Casual Observation"
+                    and len(cl["species"]) == 1
+                    and cl["all_counts_x"]
+                )
+            }
 
     print(f"Filtering to date range {DATE_MIN} – {DATE_MAX}...")
     hotspots = {lid: hs for lid, hs in hotspots.items() if hs["checklists"]}
@@ -190,7 +193,13 @@ def convert_ebird_csv_to_geojson(
     default=None,
     help='Folder to copy the output GeoJSON to for deployment. Default: FINAL_DATA_DIR/../DEPLOY_TARGET/observations. Pass "" to disable.',
 )
-def run(input_csv: str, deploy_path: str | None) -> None:
+@click.option(
+    "--include-merlin",
+    is_flag=True,
+    default=False,
+    help="Include likely Merlin passive-detection checklists (excluded by default).",
+)
+def run(input_csv: str, deploy_path: str | None, include_merlin: bool) -> None:
     """
     Convert eBird MyEBirdData CSV export to a GeoJSON FeatureCollection for map view.
 
@@ -216,7 +225,7 @@ def run(input_csv: str, deploy_path: str | None) -> None:
     print("Building sensitive zones for obfuscation...")
     sensitive_zones = build_sensitive_zones(load_sensitive_zones())
 
-    success = convert_ebird_csv_to_geojson(input_csv, output_file, sensitive_zones)
+    success = convert_ebird_csv_to_geojson(input_csv, output_file, sensitive_zones, exclude_merlin=not include_merlin)
 
     if success and deploy_path:
         try:
