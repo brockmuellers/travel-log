@@ -87,14 +87,6 @@ def convert_ebird_csv_to_geojson(
             if not (DATE_MIN <= date <= DATE_MAX):
                 continue
 
-            # Merlin checklists are intentionally excluded. Merlin passively accumulates
-            # species in the background without deliberate counting effort, making its
-            # species counts, individual counts, and durations unreliable. It also tends
-            # to duplicate species already recorded in intentional checklists nearby.
-            # Protocol string in eBird exports: "eBird - Merlin Bird ID"
-            if row.get("Protocol", "").strip() == "eBird - Merlin Bird ID":
-                continue
-
             checklist_id = row.get("Submission ID", "").strip()
             if checklist_id not in hs["checklists"]:
                 hs["checklists"][checklist_id] = {
@@ -103,15 +95,32 @@ def convert_ebird_csv_to_geojson(
                     "duration_min": row.get("Duration (Min)", "").strip() or None,
                     "individual_count": 0,
                     "species": {},  # common_name -> scientific_name
+                    "protocol": row.get("Protocol", "").strip(),
+                    "all_counts_x": True,
                 }
             cl = hs["checklists"][checklist_id]
             common = row.get("Common Name", "").strip()
             scientific = row.get("Scientific Name", "").strip()
             cl["species"][common] = scientific
+            count_raw = row.get("Count", "").strip()
             try:
-                cl["individual_count"] += int(row.get("Count", 0))
+                cl["individual_count"] += int(count_raw)
+                cl["all_counts_x"] = False
             except (ValueError, TypeError):
-                pass  # "X" or blank — skip
+                if count_raw != "X":
+                    cl["all_counts_x"] = False  # blank or unexpected value
+
+    # Exclude likely Merlin checklists: casual observations with a single species
+    # and all counts recorded as "X" (Merlin's passive-detection signature).
+    for hs in hotspots.values():
+        hs["checklists"] = {
+            cid: cl for cid, cl in hs["checklists"].items()
+            if not (
+                cl["protocol"] == "eBird - Casual Observation"
+                and len(cl["species"]) == 1
+                and cl["all_counts_x"]
+            )
+        }
 
     print(f"Filtering to date range {DATE_MIN} – {DATE_MAX}...")
     hotspots = {lid: hs for lid, hs in hotspots.items() if hs["checklists"]}
