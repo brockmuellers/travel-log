@@ -3,6 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import click
 from dotenv import load_dotenv
 
 
@@ -37,23 +38,62 @@ def extract_waypoints_from_gpx(input_file: str | Path, output_file: str | Path) 
 
         waypoints_data.append({"name": name, "time": time, "description": ""})
 
-    # Save to JSON file
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(waypoints_data, f, indent=4)
+    new_content = json.dumps(waypoints_data, indent=4)
 
-    print(f"Successfully generated {output_file} with {len(waypoints_data)} waypoints.")
+    output_path = Path(output_file)
+    if output_path.exists():
+        existing_content = output_path.read_text(encoding="utf-8")
+        if existing_content == new_content:
+            print(f"  [NO CHANGE] {output_file} ({len(waypoints_data)} waypoints)")
+        else:
+            print(f"  [CHANGED]   {output_file} ({len(waypoints_data)} waypoints)")
+    else:
+        print(f"  [NEW]       {output_file} ({len(waypoints_data)} waypoints)")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+
+@click.command()
+@click.option(
+    "--gpx-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=str),
+    default=None,
+    help="Directory containing .gpx files. Default: $PRIVATE_DATA_DIR/findpenguins",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, path_type=str),
+    default=None,
+    help="Directory to write output JSON files. Default: $INTERIM_DATA_DIR/findpenguins",
+)
+def run(gpx_dir: str | None, output_dir: str | None) -> None:
+    """
+    Extract waypoint names and times from GPX files and write them as JSON.
+
+    Produces one _waypoints.json file per .gpx input. Logs whether each output
+    file is new, changed, or unchanged compared to the existing file on disk.
+
+    NOTE: Uses raw un-obfuscated GPX files from PRIVATE_DATA_DIR.
+    """
+    load_dotenv()
+
+    if gpx_dir is None:
+        gpx_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "findpenguins")
+    if output_dir is None:
+        output_dir = os.path.join(os.getenv("INTERIM_DATA_DIR"), "findpenguins")
+
+    inputs = sorted(Path(gpx_dir).glob("*.gpx"))
+    if not inputs:
+        print(f"No .gpx files found in {gpx_dir}")
+        return
+
+    print(f"Processing {len(inputs)} GPX file(s) from {gpx_dir}...")
+    for infile in inputs:
+        filename = f"{infile.stem}_waypoints.json"
+        outfile = os.path.join(output_dir, filename)
+        extract_waypoints_from_gpx(infile, outfile)
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    # NOTE: USING RAW UN-OBFUSCATED GPX FILES FOR NOW
-    DEFAULT_GPX_DIR = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "findpenguins")
-    DEFAULT_OUTPUT_DIR = os.path.join(os.getenv("INTERIM_DATA_DIR"), "findpenguins")
-
-    inputs = list(Path(DEFAULT_GPX_DIR).glob("*.gpx"))
-
-    for infile in inputs:
-        filename = f"{infile.stem}_waypoints.json"
-        outfile = os.path.join(DEFAULT_OUTPUT_DIR, filename)
-
-        extract_waypoints_from_gpx(infile, outfile)
+    run()
