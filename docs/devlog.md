@@ -137,3 +137,15 @@ Not all photos are getting assigned, so I need some manual "trips" to get those 
 2026-03-23
 
 I'm noticing that it's really easy to work "too fast" with claude. I'm writing fewer notes (am I thinking less or am I instead rubber ducking with the claude chat? I think the latter but it's the sort of thing one could be deluded about). Sometimes I just want something to be done, and I approve whatever code changes it suggests, maybe ask it to explain a thing or two, and that's all. That doesn't lead to good long term results though. When I have a good mental model of the codebase, I think of things that claude misses all the time. It's a crucial part of code quality and simplicity. When I rush through implementing features, I no longer have a good mental model of the codebase. What new mess will I make for myself?
+
+2026-03-24
+
+Exploring an agentic q&a flow. I'm using the corollary of my local photo description LLM. It's okay. I have a lot of endpoints to write to get this really working smoothly but it's not too complex.
+
+I'm having real issues with the waypoint obfuscation. I had something good that didn't handle the inaturalist points, and in trying to handle the inaturalist points, everything has unraveled. At least I got some good code reorganization out of it, while trying to make sense of everything, and I rediscovered the wonderful direnv.
+
+2026-03-25
+
+I gave up on having AI figure out waypoint obfuscation. I tried doing brainstorming sessions with it, I wrote specs and tried to have it implement them, I let it run wild - everything was weird and buggy. So I just wrote out the logic and let it implement it directly. It suggested one simplification, but otherwise, we just did my thing. Much faster, more satisfying, and I actually understand and can debug the implementation. (All that being said, I later realized that I hadn't been correctly testing the obfuscation, and the original AI implementations did sort of work. Nonetheless, they were complex and I didn't understand them.)
+
+I considered simplifying the data processing flow by just shoving everything in the DB and letting my API handle it, instead of writing geojson and gpx files as static assets. But I like having the map be somewhat functional even without API access, so I'll keep it as is.

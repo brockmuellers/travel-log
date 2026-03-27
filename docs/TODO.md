@@ -38,8 +38,6 @@
 
 **High:**
 * Fix track in Japan and Vietnam
-* Fix Vietnamese waypoint name with special characters (and find any others?)
-* Fill in beginning waypoints for West Coast trip (update trips.json too)
 * Finish privacy-screening photos
 * Smarter photo-to-waypoint linking for travel days and time changes!
 * Victoria waypoints need different names for better obfuscation - can then make the second one a named location in the config file, and then change the "ghost zone overlap" warn back to an error
