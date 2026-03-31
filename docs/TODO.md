@@ -1,8 +1,8 @@
 ### Product Features
 
 **High:**
-* Download and process eBird data
-* Download and process garmin data
+* Process eBird data (use API)
+* Process garmin data
 
 **Medium:**
 * Build waypoint summaries from all data embeddings
@@ -17,6 +17,8 @@
 * Explore different embeddings
 * There is no public location calculated for tracks/track points
 * Get iNaturalist data in DB
+* Slow API calls on initial page load lead to waypoints not showing until page refresh
+* Day trip start/end dates are not handled properly; also check photo assignment logic
 
 **Low:**
 * Sort inaturalist observations by rarity so the rarest in a region shows up on top
@@ -37,16 +39,16 @@
 ### Data
 
 **High:**
-* Fix track in Japan and Vietnam
+* Fix track in Japan, Vietnam, Virachey
+* Check waypoint dates: Virachey to 12/18, Banlung to 12/19, then Don Det
 * Finish privacy-screening photos
-* Smarter photo-to-waypoint linking for travel days and time changes!
 * Victoria waypoints need different names for better obfuscation - can then make the second one a named location in the config file, and then change the "ghost zone overlap" warn back to an error
 
 **Medium:**
-* Make sure that waypoints with special characters in their name are correctly populated with description in the DB
+* Make sure that waypoints with special characters in their name are handled correctly - populated with description in the DB, search working, FE popup display working
 
 **Low:**
-* A few photos don't have time_taken - missing from exif?
+* A few photos don't have time_taken - missing from exif? Leads to no waypoint assignment
 
 
 ### Infrastructure

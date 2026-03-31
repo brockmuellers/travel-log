@@ -149,3 +149,36 @@ I'm having real issues with the waypoint obfuscation. I had something good that 
 I gave up on having AI figure out waypoint obfuscation. I tried doing brainstorming sessions with it, I wrote specs and tried to have it implement them, I let it run wild - everything was weird and buggy. So I just wrote out the logic and let it implement it directly. It suggested one simplification, but otherwise, we just did my thing. Much faster, more satisfying, and I actually understand and can debug the implementation. (All that being said, I later realized that I hadn't been correctly testing the obfuscation, and the original AI implementations did sort of work. Nonetheless, they were complex and I didn't understand them.)
 
 I considered simplifying the data processing flow by just shoving everything in the DB and letting my API handle it, instead of writing geojson and gpx files as static assets. But I like having the map be somewhat functional even without API access, so I'll keep it as is.
+
+2026-03-31
+
+Time to export garmin data! I want:
+* [Sleep data](https://connect.garmin.com/app/sleep/2026-03-31/2), which needs to be downloaded monthly
+	* https://connect.garmin.com/gc-api/sleep-service/stats/sleep/daily/2026-03-25/2026-03-31
+* [HRV status](https://connect.garmin.com/app/report/-34/all/last_four_weeks), downloaded monthly
+	* https://connect.garmin.com/gc-api/hrv-service/hrv/daily/2026-02-04/2026-03-03
+* [Activities](https://connect.garmin.com/app/activities)
+	* Overview: https://connect.garmin.com/gc-api/activitylist-service/activities/search/activities?limit=20&start=20
+	* Activity metadata: https://connect.garmin.com/gc-api/activity-service/activity/21954463720
+	* Activity route: ???
+
+I'm hoping that a [requested data export](https://www.garmin.com/en-CA/account/datamanagement/exportdata) will get me everything that I want, but it'll take a bit to receive it. There's also [a git repo](https://github.com/pe-st/garmin-connect-export) to do this with a bit more fidelity, but I'll wait to see what the official export looks like.
+
+Hurray! The official export has all of the data I need. Looks like it's all in `DI_CONNECT`:
+* Sleep data: `DI-Connect-Wellness`
+* HRV data: `DI-Connect-Wellness`, I think in `healthStatusData`
+* Activity metadata: I think `DI-Connect-Fitness`, in `summarizedActivities`
+* Activity FIT files: `DI-Connect-Uploaded-Files`
+
+Combing through the data will take some dedicated time, so I'm going to move on to a more low-effort-high-reward task for now.
+
+On to photo-waypoint linking. This is not intuitive because the waypoint start/end times tend to be at midnight. So on a transition day, waypoint A's end time is 00:00:00 and waypoint B's start time is 00:00:00. On those transition days, I want to use a location-based tiebreaker to decide which waypoint to link the photo to.
+
+Tricky bits:
+* Day trips - I'm not even sure how the start/end times work for this. I'm explicitly ignoring them for now. If we visit waypoints A, B, and C on a given day, I'll ignore B entirely.
+* I've considered photos taken en route to a destination to belong to that destination. But, there could be situations where we explore our departure location a bit before we leave for the destination. For now, I'll use a rough heuristic: given waypoints A and B and photo P, I'll say that P belongs to A if `dist(A, P) < dist(A, B) * 0.1`. So for big jumps, like Santiago to Lima, anything within the city bounds of Santiago should be linked to Santiago. For smaller jumps, like small towns that are 20km apart, only photos within 2km of town A will be linked to it. I'll need to validate this with my real world data.
+* Using local time for everything. I haven't thought about edge cases here. Trans-continental flights are a big one.
+* What happens when there isn't waypoint overlap? For example, overnight bus rides often lead to waypoint A's end time being 00:00 on the day of departure (even if we left at 22:00), and waypoint B's start time being 00:00 on the day of arrival.
+* Once I decide that a photo belongs to location B based on distance, all following photos will belong to location B. I think that's appropriate but not totally sure. I'm going to log situations where the photos then approach location A again.
+* Not a big deal I think, but end times are exclusive, so depending on the code, there could be overlap.
+* AI seems confused about what happens over trip boundaries. I don't see a problem there, but double check. Why are trips considered in the photo ETL at all?
