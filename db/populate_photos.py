@@ -110,7 +110,7 @@ def connect_to_database(
         return None
 
 
-def _latest_jsonl_photos_files(paths: list[Path]) -> list[Path]:
+def _latest_jsonl_captions_files(paths: list[Path]) -> list[Path]:
     """
     From jsonl paths like captions_2024-07_2026-02-25.jsonl, keep only the latest
     file per content year-month (by the file date suffix). Returns a sorted list.
@@ -131,6 +131,30 @@ def _latest_jsonl_photos_files(paths: list[Path]) -> list[Path]:
         ):
             latest_per_ym[content_ym] = path
     return sorted(latest_per_ym.values(), key=lambda p: p.name)
+
+
+def _load_captions(photos_dir: Path) -> dict[str, str]:
+    """
+    Load all caption JSONL files (latest per year-month) and return a mapping
+    of filename → caption. Only the caption field is read; other fields are ignored.
+    """
+    captions: dict[str, str] = {}
+    caption_files = _latest_jsonl_captions_files(list(photos_dir.glob("captions_*.jsonl")))
+    for path in caption_files:
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                filename = data.get("filename")
+                caption = data.get("caption")
+                if filename and caption:
+                    captions[filename] = caption
+    return captions
 
 
 def _apply_transition_corrections(
@@ -291,10 +315,12 @@ def run_photos_etl(
     conn: psycopg2.extensions.connection, photos_dir: str | Path
 ) -> None:
     """
-    Populate the photos table from JSONL files in photos_dir.
-    Each line is a JSON object with filename, caption, timestamp, and location.
-    Only the most recent file per year-month is processed (e.g. captions_2024-07_2026-02-28.jsonl
-    is used and captions_2024-07_2026-02-25.jsonl is ignored).
+    Populate the photos table from metadata and caption JSONL files in photos_dir.
+
+    Metadata files (metadata_YYYY-MM.jsonl) are the source of truth for which photos
+    exist and their EXIF data (timestamp, location). Caption files (captions_*.jsonl,
+    latest per year-month) are loaded as an optional lookup: photos without a caption
+    entry are inserted with caption=NULL.
 
     Photos are first assigned to waypoints by time window (start_time <= photo < end_time).
     A transition correction pass then uses GPS proximity to fix misassignments on days
@@ -304,12 +330,12 @@ def run_photos_etl(
     if not photos_dir.is_dir():
         raise FileNotFoundError(f"Photos directory not found: {photos_dir}")
 
-    jsonl_files = _latest_jsonl_photos_files(list(photos_dir.glob("*.jsonl")))
-    if not jsonl_files:
-        print(
-            f"No .jsonl files found in {photos_dir} (or none matching captions_YYYY-MM_YYYY-MM-DD.jsonl)"
-        )
+    metadata_files = sorted(photos_dir.glob("metadata_*.jsonl"))
+    if not metadata_files:
+        print(f"No metadata_*.jsonl files found in {photos_dir}")
         return
+
+    captions = _load_captions(photos_dir)
 
     cur = conn.cursor()
     cur.execute(
@@ -368,7 +394,7 @@ def run_photos_etl(
 
     # --- Step 1: Parse all photos and apply time-window assignment ---
     photos: list[dict[str, Any]] = []
-    for path in sorted(jsonl_files):
+    for path in metadata_files:
         print(f"Processing {path}...")
         with open(path, "r") as f:
             for line in f:
@@ -381,7 +407,7 @@ def run_photos_etl(
                     print(f"Skipping invalid JSON in {path}: {e}")
                     continue
                 filename = data.get("filename")
-                caption = data.get("caption")
+                caption = captions.get(filename) if filename else None
                 location = data.get("location") or {}
                 # location_metadata stores the full "location" object from the input
                 location_metadata = json.dumps(location) if location else None

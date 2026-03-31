@@ -412,7 +412,7 @@ def run_find_penguins_description_etl(
             cur.execute(update_query, (description, waypoint_id))
 
         conn.commit()
-        print("\nSUCCESS: All waypoint descriptions populated and committed.")
+        print("SUCCESS: All waypoint descriptions populated and committed.")
 
     except Exception:
         conn.rollback()
@@ -485,7 +485,6 @@ if __name__ == "__main__":
     for f in waypoint_description_files:
         try:
             run_find_penguins_description_etl(connection, f)
-            print("Success!")
         except Exception:
             connection.close()
             print("Failed to process")

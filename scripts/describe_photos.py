@@ -10,8 +10,6 @@ from dotenv import load_dotenv
 from ollama import chat
 from PIL import Image
 
-from lib.photo_metadata import get_image_metadata
-
 # PROMPT = "Write a short caption for this photo."
 # PROMPT = "Describe this image in a one-sentence caption."
 PROMPT = """Describe this image using exactly two lines:
@@ -79,9 +77,6 @@ def generate_captions(image_dir: str, jsonl_path: str, year_month: str) -> None:
                 print(f"Skipping {filename} (already captioned).")
                 continue
 
-            # --- Metadata Extraction & Filtering ---
-            metadata = get_image_metadata(os.path.join(image_dir, filename))
-
             file_path = os.path.join(image_dir, filename)
 
             try:
@@ -128,8 +123,6 @@ def generate_captions(image_dir: str, jsonl_path: str, year_month: str) -> None:
                 new_entry = {
                     "filename": long_filename,
                     "caption": caption,
-                    "timestamp": metadata["timestamp"],
-                    "location": metadata["location"],
                 }
 
                 # Write a single JSON string followed by a newline directly to the file
@@ -160,11 +153,10 @@ def generate_captions(image_dir: str, jsonl_path: str, year_month: str) -> None:
 @click.argument("year_month", type=str)
 def run(year_month: str) -> None:
     """
-    Process a directory of images to generate AI captions and extract EXIF/PostGIS data.
+    Generate AI captions for photos in a directory and write them to a JSONL file.
 
     YEAR_MONTH: Subdirectory of PRIVATE_DATA_DIR/photos, e.g. '2024/07'
     """
-    # TODO: this script might be doing too much - AI captions plus exif data
     load_dotenv()
 
     image_dir = os.path.join(os.getenv("PRIVATE_DATA_DIR"), "photos", year_month)
