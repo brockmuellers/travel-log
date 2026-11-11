@@ -125,7 +125,7 @@ Auth: all non-health endpoints require `X-Site-Token` header matching `SITE_TOKE
 
 ### Embedding service (`embedding_service/main.py`)
 
-Tiny Python HTTP server. Used only in development to avoid Hugging Face API costs. The Go server can't run Python ML models directly, so this bridges the gap.
+Tiny Python HTTP server. Used only in development, so local search doesn't need Cloudflare Workers AI. The Go server can't run Python ML models directly, so this bridges the gap.
 
 - `POST /embed` — `{"text": "..."}` → `{"embedding": [384 floats]}`
 - `GET /health` — `{"status": "ok"}`

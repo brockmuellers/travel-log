@@ -6,7 +6,7 @@ This is an AI-generated description of the current state of the project as of co
 
 This project is a **travel-log**: an enriched, map-based visualization and insight tool built from 18 months of sabbatical travel data. The author has collected a large amount of heterogeneous data (GPX tracks, geotagged photos, eBird/iNaturalist observations, Garmin activities, travel notes, and a spouse’s travel blog) and wants to integrate it into a single experience. The primary purpose is to produce a useful, visually engaging keepsake and exploration surface; a secondary purpose is to learn modern ML workflows (vector embeddings, RAG) and spatial data handling. Goals include: (1) a “Hello World” travel map with processed GPX and eBird data and obfuscated sensitive locations; (2) a local database and ETL (Postgres with PostGIS and pgvector) for flexible data models and vector embeddings; (3) a basic server and visualization layer (Go backend, map-based UI); and (4) a low-cost public deployment with privacy and authorization in mind. A stretch goal is a flythrough video that follows the main GPX track and surfaces the most interesting data or insights per location.
 
-The codebase is in an early but functional phase: the database schema and ETL populate **trips**, **waypoints**, **tracks**, and **track_points** from FindPenguins GPX; waypoint **descriptions** are generated from the travel blog (via Gemini) and stored; **embeddings** (384-dim, BAAI/bge-small-en-v1.5) are computed for waypoints and used for semantic search. A Go HTTP server exposes waypoint count and semantic search; in development it calls a local Python embedding service, and in production it uses the Hugging Face Inference API. The frontend is a static GitHub Pages site that can call this API; deployment uses Neon (Postgres), Render (Go server), and Cloudflare (DNS/bot mitigation). Known challenges include timestamp and timezone consistency across sources, geotag precision, privacy handling, and scaling RAG/vector workflows; see the README and docs for data sources, risks, and phased roadmap.
+The codebase is in an early but functional phase: the database schema and ETL populate **trips**, **waypoints**, **tracks**, and **track_points** from FindPenguins GPX; waypoint **descriptions** are generated from the travel blog (via Gemini) and stored; **embeddings** (384-dim, BAAI/bge-small-en-v1.5) are computed for waypoints and used for semantic search. A Go HTTP server exposes waypoint count and semantic search; in development it calls a local Python embedding service, and in production it uses Cloudflare Workers AI. The frontend is a static GitHub Pages site that can call this API; deployment uses Neon (Postgres), Render (Go server), and Cloudflare (DNS/bot mitigation). Known challenges include timestamp and timezone consistency across sources, geotag precision, privacy handling, and scaling RAG/vector workflows; see the README and docs for data sources, risks, and phased roadmap.
 
 ---
 
@@ -37,7 +37,7 @@ The codebase is in an early but functional phase: the database schema and ETL po
 
 ### Embedding service (local dev)
 
-- **Role:** So the Go server can run semantic search without embedding logic in Go; production uses Hugging Face instead.
+- **Role:** So the Go server can run semantic search without embedding logic in Go; production uses Cloudflare Workers AI instead.
 - **Implementation:** `embedding_service/main.py` — small HTTP server; `POST /embed` body `{"text": "..."}` returns `{"embedding": [384 floats]}`. Uses SentenceTransformers with `BAAI/bge-small-en-v1.5`. Env: `EMBEDDING_SERVICE_PORT` (default 5001), `EMBEDDING_SERVICE_HOST` (default 127.0.0.1). Dependencies in `embedding_service/requirements.txt`.
 
 ### Go server
@@ -72,7 +72,7 @@ The codebase is in an early but functional phase: the database schema and ETL po
 ### Planned and in-progress (from docs/TODO.md and devlog)
 
 - **Product:** eBird download/processing; travel mode on GPX and map line coloring; photo descriptions; waypoint summaries from embeddings; map legend; filter search by trip; link search results to map.
-- **Internal:** Refactor Go server; split frontend logic; local test DB; Python tests for data transforms; embedding service exposed for public use (to avoid Hugging Face when author’s machine is on).
+- **Internal:** Refactor Go server; split frontend logic; local test DB; Python tests for data transforms; embedding service exposed for public use (to avoid Workers AI when author’s machine is on).
 - **Data:** Fix track in Japan/Vietnam; fix waypoint names with special characters.
 - **Infra:** Cold-start handling (e.g. health pings); Cloudflare worker for pausing traffic (version-controlled); CI (e.g. GitHub Actions with service container).
 

@@ -45,6 +45,7 @@
 * Victoria waypoints need different names for better obfuscation - can then make the second one a named location in the config file, and then change the "ghost zone overlap" warn back to an error
 
 **Medium:**
+* Scan for photo-waypoint link accuracy (checkout branches: BE waypoints-list-photo-urls and FE waypoint-two-photos)
 * Make sure that waypoints with special characters in their name are handled correctly - populated with description in the DB, search working, FE popup display working
 
 **Low:**
@@ -56,7 +57,7 @@
 **Medium:**
 * Check cold start response times; might want something to ping my health endpoint regularly (14 minutes?) to keep render from going to sleep; maybe just during the day
 * I think the bot control I was hoping for doesn't apply to my API, since the CNAME isn't forwarded - double check that
-* Expose embedding_service to public internet so I can bypass huggingfaces when my computer is on?
+* Expose embedding_service to public internet so I can bypass Workers AI when my computer is on?
 * Auto-deploy seems broken on render (see excluded/included paths)
 
 **Low:**

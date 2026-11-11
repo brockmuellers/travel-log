@@ -45,7 +45,7 @@ Note to self: don't forget to `go mod tidy` or `make install-deps` before pushin
 
 The Go server can run semantic search over waypoints using a small local Python embedding service (same model as waypoint embeddings: `BAAI/bge-small-en-v1.5`).
 
-Production semantic search is handled by the Hugging Face API.
+Production semantic search calls the same model on Cloudflare Workers AI (`@cf/baai/bge-small-en-v1.5`, CLS pooling).
 
 **Testing**
 

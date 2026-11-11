@@ -46,7 +46,7 @@ package main
 //     least 2 days away from all already-selected photos. If the gap can't be
 //     met, it relaxes to pick the most temporally distant remaining candidate.
 //
-//   - The embedding fetch (local dev service or Hugging Face prod) lives here
+//   - The embedding fetch (local dev service or Cloudflare Workers AI in prod) lives here
 //     because search is its only consumer. If another endpoint ever needs
 //     embeddings, extract it then.
 
