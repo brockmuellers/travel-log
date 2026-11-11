@@ -182,3 +182,7 @@ Tricky bits:
 * Once I decide that a photo belongs to location B based on distance, all following photos will belong to location B. I think that's appropriate but not totally sure. I'm going to log situations where the photos then approach location A again.
 * Not a big deal I think, but end times are exclusive, so depending on the code, there could be overlap.
 * AI seems confused about what happens over trip boundaries. I don't see a problem there, but double check. Why are trips considered in the photo ETL at all?
+
+2026-11-11
+
+Search broke: Hugging Face started returning 402s, and the free monthly inference credits seem to be gone. Switched prod embeddings to Cloudflare Workers AI, which hosts the same bge-small-en-v1.5 model, so no re-embedding needed. The primary functional difference is that Workers AI defaults to mean pooling; `pooling: "cls"` matches sentence-transformers exactly.
