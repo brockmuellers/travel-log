@@ -100,8 +100,9 @@ const (
 	// embeddingDim is the expected vector dimension (BAAI/bge-small-en-v1.5).
 	embeddingDim = 384
 
-	// hfEmbeddingModel is the Hugging Face Inference API endpoint used in prod.
-	hfEmbeddingModel = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5/pipeline/feature-extraction"
+	// workersAIEmbeddingURL is the Cloudflare Workers AI endpoint used in prod
+	// (%s = account ID). It hosts the same BAAI/bge-small-en-v1.5 model.
+	workersAIEmbeddingURL = "https://api.cloudflare.com/client/v4/accounts/%s/ai/run/@cf/baai/bge-small-en-v1.5"
 )
 
 // ---------------------------------------------------------------------------
@@ -492,27 +493,32 @@ func waypointsSearchHybrid(pool *pgxpool.Pool, env, embeddingServiceURL string, 
 // ---------------------------------------------------------------------------
 
 // fetchQueryEmbedding calls the embedding service and returns a 384-dim vector.
-// In dev, it calls the local Python embedding service. In prod, it calls the
-// Hugging Face Inference API directly. Both use the same HF wire format
-// (request: {"inputs": text}, response: [[384 floats]]).
+// In dev, it calls the local Python embedding service, which uses the HF wire
+// format (request: {"inputs": text}, response: [[384 floats]]). In prod, it
+// calls Cloudflare Workers AI (request: {"text": text, "pooling": "cls"},
+// response: {"result": {"data": [[384 floats]]}}). CLS pooling matches what
+// sentence-transformers uses for bge models; Workers AI defaults to mean.
 func fetchQueryEmbedding(ctx context.Context, query, env, embeddingServiceURL string) ([]float32, error) {
 	embURL := embeddingServiceURL + "/embed"
+	payload := map[string]string{"inputs": query}
+	var token string
 	if env == "prod" {
-		embURL = hfEmbeddingModel
+		accountID := os.Getenv("CLOUDFLARE_ACCOUNT_ID")
+		token = os.Getenv("WORKERS_AI_TOKEN")
+		if accountID == "" || token == "" {
+			return nil, fmt.Errorf("CLOUDFLARE_ACCOUNT_ID and WORKERS_AI_TOKEN must be set for prod")
+		}
+		embURL = fmt.Sprintf(workersAIEmbeddingURL, accountID)
+		payload = map[string]string{"text": query, "pooling": "cls"}
 	}
 
-	body, _ := json.Marshal(map[string]string{"inputs": query})
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, embURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("embedding request failed")
 	}
 	req.Header.Set("Content-Type", "application/json")
-
-	if env == "prod" {
-		token := os.Getenv("HUGGING_FACE_TOKEN")
-		if token == "" {
-			return nil, fmt.Errorf("HUGGING_FACE_TOKEN not set for prod")
-		}
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -531,27 +537,28 @@ func fetchQueryEmbedding(ctx context.Context, query, env, embeddingServiceURL st
 		return nil, fmt.Errorf("embedding service error (status %d): %s", resp.StatusCode, respBody)
 	}
 
-	// HF API originally returned [[384 floats]] (nested) but appears to have
-	// changed to [384 floats] (flat). We support both to be safe.
-	var flat []float64
-	if err := json.Unmarshal(respBody, &flat); err == nil && len(flat) == embeddingDim {
-		vec := make([]float32, len(flat))
-		for i, v := range flat {
-			vec[i] = float32(v)
-		}
-		return vec, nil
-	}
-
 	var nested [][]float64
-	if err := json.Unmarshal(respBody, &nested); err == nil && len(nested) > 0 && len(nested[0]) == embeddingDim {
-		vec := make([]float32, len(nested[0]))
-		for i, v := range nested[0] {
-			vec[i] = float32(v)
+	if env == "prod" {
+		var cf struct {
+			Result struct {
+				Data [][]float64 `json:"data"`
+			} `json:"result"`
 		}
-		return vec, nil
+		if err := json.Unmarshal(respBody, &cf); err == nil {
+			nested = cf.Result.Data
+		}
+	} else {
+		_ = json.Unmarshal(respBody, &nested)
 	}
 
-	return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
+	if len(nested) == 0 || len(nested[0]) != embeddingDim {
+		return nil, fmt.Errorf("unexpected embedding response: %s", respBody)
+	}
+	vec := make([]float32, embeddingDim)
+	for i, v := range nested[0] {
+		vec[i] = float32(v)
+	}
+	return vec, nil
 }
 
 // diversifyPhotos selects up to n photos from candidates (already sorted by

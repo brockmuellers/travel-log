@@ -72,9 +72,9 @@ func main() {
 	}
 
 	var presigner *r2Presigner
-	if r2AccountID := os.Getenv("R2_ACCOUNT_ID"); r2AccountID != "" {
+	if cfAccountID := os.Getenv("CLOUDFLARE_ACCOUNT_ID"); cfAccountID != "" {
 		presigner = newR2Presigner(
-			r2AccountID,
+			cfAccountID,
 			os.Getenv("R2_ACCESS_KEY_ID"),
 			os.Getenv("R2_SECRET_ACCESS_KEY"),
 			os.Getenv("R2_BUCKET_NAME"),

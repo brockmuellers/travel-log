@@ -9,7 +9,7 @@ Skips directories containing a NOT_SCREENED marker file.
 Strips GPS/location EXIF data before uploading (orientation is preserved).
 
 Required env vars (add to .env):
-    R2_ACCOUNT_ID       — Cloudflare account ID
+    CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID
     R2_ACCESS_KEY_ID    — R2 API token access key
     R2_SECRET_ACCESS_KEY — R2 API token secret key
     R2_BUCKET_NAME      — Target bucket name
@@ -57,7 +57,7 @@ def strip_location_exif(path: Path) -> BytesIO:
 
 
 def get_r2_client() -> boto3.client:
-    account_id = os.environ["R2_ACCOUNT_ID"]
+    account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     return boto3.client(
         "s3",
         endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",

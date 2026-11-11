@@ -49,7 +49,7 @@ The codebase is in an early but functional phase: the database schema and ETL po
   - `GET /waypoints/search?q=<query>` — Semantic search over waypoints; requires site token. Query is embedded (see below), then the server runs a pgvector cosine-distance query on `waypoints.embedding`, returns up to 3 results with `name`, `description`, `distance`, and a 0–100 `score` derived from distance.
 - **Auth:** Middleware `requireSiteToken` checks `X-Site-Token` header against `SITE_TOKEN`; `/health` is excluded. Not intended as strong security; mainly to limit abuse and control who can hit the API.
 - **CORS:** If `CORS_ORIGINS` is set (comma-separated), responses include `Access-Control-Allow-Origin` for those origins; OPTIONS is handled.
-- **Semantic search flow:** (1) Read `q`. (2) **Prod (`ENV=prod`):** POST to Hugging Face Inference API (`BAAI/bge-small-en-v1.5`), using `HUGGING_FACE_TOKEN`. (3) **Dev:** POST to `EMBEDDING_SERVICE_URL/embed` with `{"text": q}`. (4) Expect 384-dim vector; then `SELECT name, description, (embedding <=> $1) AS distance FROM waypoints WHERE embedding IS NOT NULL ORDER BY distance ASC LIMIT 3`.
+- **Semantic search flow:** (1) Read `q`. (2) **Prod (`ENV=prod`):** POST to Cloudflare Workers AI (`@cf/baai/bge-small-en-v1.5`, `pooling: cls`), using `CLOUDFLARE_ACCOUNT_ID` and `WORKERS_AI_TOKEN`. (3) **Dev:** POST to `EMBEDDING_SERVICE_URL/embed` with `{"text": q}`. (4) Expect 384-dim vector; then `SELECT name, description, (embedding <=> $1) AS distance FROM waypoints WHERE embedding IS NOT NULL ORDER BY distance ASC LIMIT 3`.
 
 ### Testing
 
@@ -65,7 +65,7 @@ The codebase is in an early but functional phase: the database schema and ETL po
 
 ### Environment variables (summary)
 
-- **Server:** `DATABASE_URL` or `DATABASE_CONFIG`, `SERVER_ADDR`, `SITE_TOKEN`; optional `ENV`, `EMBEDDING_SERVICE_URL`, `CORS_ORIGINS`; prod only: `HUGGING_FACE_TOKEN`.
+- **Server:** `DATABASE_URL` or `DATABASE_CONFIG`, `SERVER_ADDR`, `SITE_TOKEN`; optional `ENV`, `EMBEDDING_SERVICE_URL`, `CORS_ORIGINS`; prod only: `CLOUDFLARE_ACCOUNT_ID`, `WORKERS_AI_TOKEN`.
 - **ETL / scripts:** `PRIVATE_DATA_DIR`, `INTERIM_DATA_DIR`, `DATABASE_*` or `DATABASE_CONFIG`; Gemini scripts use their own API keys (e.g. Google/Gemini).
 - **Embedding service:** `EMBEDDING_SERVICE_HOST`, `EMBEDDING_SERVICE_PORT`.
 

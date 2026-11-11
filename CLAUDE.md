@@ -119,7 +119,7 @@ The `mode` parameter controls which embeddings are searched:
 
 Auth: all non-health endpoints require `X-Site-Token` header matching `SITE_TOKEN` env var.
 
-**Dev vs prod embedding**: `ENV=prod` calls Hugging Face Inference API directly; dev calls the local Python embedding service at `EMBEDDING_SERVICE_URL` (default `http://127.0.0.1:5001`). Both use the HF wire format. Code lives in `search.go:fetchQueryEmbedding`.
+**Dev vs prod embedding**: `ENV=prod` calls Cloudflare Workers AI (`@cf/baai/bge-small-en-v1.5`, CLS pooling) directly; dev calls the local Python embedding service at `EMBEDDING_SERVICE_URL` (default `http://127.0.0.1:5001`). Code lives in `search.go:fetchQueryEmbedding`.
 
 **Photo URLs**: Search results include photo URLs. In prod, the R2 bucket is private and the server generates presigned URLs (1-hour expiry) using `R2_*` env vars. In dev, `PHOTO_BASE_URL` (e.g., `http://localhost:8082`) is prepended to the filename. Photos are uploaded to R2 via `scripts/upload_photos.py`.
 
@@ -132,7 +132,7 @@ Tiny Python HTTP server. Used only in development to avoid Hugging Face API cost
 
 ### Local dev setup
 
-Requires a `.env` file with `DATABASE_URL`, `SERVER_ADDR`, `SITE_TOKEN`, `PRIVATE_DATA_DIR`, `PHOTO_BASE_URL`, and (for prod) `HUGGING_FACE_TOKEN`, `NEON_CONNECTION`, `CORS_ORIGINS`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. Start order: `make start-db` → `make run-embedding` → `make run-server`. Optionally `make run-photos` to serve photos for the local frontend.
+Requires a `.env` file with `DATABASE_URL`, `SERVER_ADDR`, `SITE_TOKEN`, `PRIVATE_DATA_DIR`, `PHOTO_BASE_URL`, and (for prod) `CLOUDFLARE_ACCOUNT_ID`, `WORKERS_AI_TOKEN`, `NEON_CONNECTION`, `CORS_ORIGINS`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. Start order: `make start-db` → `make run-embedding` → `make run-server`. Optionally `make run-photos` to serve photos for the local frontend.
 
 Go tests use the `integration` build tag and expect `DATABASE_URL` pointing at the local Docker DB.
 
